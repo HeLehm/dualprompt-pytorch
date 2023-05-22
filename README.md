@@ -61,6 +61,10 @@ python -m torch.distributed.launch \
         --data-path /local_datasets/ \
         --output_dir ./output 
 ```
+or
+```
+python main.py cifar100_dualprompt --model vit_base_patch16_224 --batch-size 24 --data-path ./local_datasets/ --output_dir ./output --device "mps"
+```
 
 Single node with multi gpus
 ```

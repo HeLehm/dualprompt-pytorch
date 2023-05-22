@@ -77,8 +77,8 @@ def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module,
         loss.backward() 
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
-
-        torch.cuda.synchronize()
+        if args.distributed:
+            torch.cuda.synchronize()
         metric_logger.update(Loss=loss.item())
         metric_logger.update(Lr=optimizer.param_groups[0]["lr"])
         metric_logger.meters['Acc@1'].update(acc1.item(), n=input.shape[0])
