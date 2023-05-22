@@ -397,12 +397,12 @@ class VisionTransformer(nn.Module):
         self.g_prompt_layer_idx = g_prompt_layer_idx
         # num_g_prompt : The actual number of layers to which g-prompt is attached.
         # In official code, create as many layers as the total number of layers and select them based on the index
-        num_g_prompt = len(self.g_prompt_layer_idx) if self.g_prompt_layer_idx is not None else 0
+        num_g_prompt = num_heads #len(self.g_prompt_layer_idx) if self.g_prompt_layer_idx is not None else 0
         self.use_prefix_tune_for_g_prompt = use_prefix_tune_for_g_prompt
         
         self.use_e_prompt = use_e_prompt
         self.e_prompt_layer_idx = e_prompt_layer_idx
-        num_e_prompt = len(self.e_prompt_layer_idx) if self.e_prompt_layer_idx is not None else 0
+        num_e_prompt = num_heads #len(self.e_prompt_layer_idx) if self.e_prompt_layer_idx is not None else 0
         self.use_prefix_tune_for_e_prompt = use_prefix_tune_for_e_prompt
         
         if not self.use_prefix_tune_for_g_prompt and not self.use_prefix_tune_for_g_prompt:
@@ -470,6 +470,17 @@ class VisionTransformer(nn.Module):
         self.fc_norm = norm_layer(embed_dim) if use_fc_norm else nn.Identity()
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
+        # mask aproach instead of idx
+        if self.use_g_prompt and self.use_e_prompt:
+            self.g_mask = torch.zeros((num_heads), dtype=torch.float32)
+            for i in range(num_heads):
+                if i in self.g_prompt_layer_idx:
+                    self.g_mask[i] = 1
+            self.e_mask = torch.zeros((num_heads), dtype=torch.float32)
+            for i in range(num_heads):
+                if i in self.e_prompt_layer_idx:
+                    self.e_mask[i] = 1
+
         if weight_init != 'skip':
             self.init_weights(weight_init)
 
@@ -536,18 +547,59 @@ class VisionTransformer(nn.Module):
                         prompt_mask = None
                 else:
                     prompt_mask = None
-                
-                g_prompt_counter = -1
-                e_prompt_counter = -1
 
                 res = self.e_prompt(x, prompt_mask=prompt_mask, cls_features=cls_features)
                 e_prompt = res['batched_prompt']
 
+                #NewCode Start
+                
+                # new code e_prompt shape = 12, 24, 2, 5, 12, 64
+                # olf code e_prompt shape = 12, 24, 2, 5, 12, 64
+                # new code self.g_prompt shape = 12, 2, 5, 12, 64
+                # old code self.g_prompt shape = 12, 2, 5, 12, 64
+                
+
+                
+
                 for i, block in enumerate(self.blocks):
+                    
+                    g_mask = self.g_mask[i]
+                    e_mask = self.e_mask[i]
+
+                    # get batch gprompt
+                    idx = torch.tensor([i] * x.shape[0]).to(x.device)
+                    block_g_prompt = self.g_prompt[
+                        idx
+                    ]
+
+                    #get_batch eprompt
+                    block_e_prompt = e_prompt[
+                        i
+                    ]
+                    
+                    
+                    # interpolate 
+                    # should be shape [24,2,5,12,64]
+                    # but is [24,24,2,5,12,64]
+                    prompt = g_mask * block_g_prompt + e_mask * block_e_prompt
+                    
+                    # TODO: diff config stuff 
+                    # this is only 
+
+                    x = block(x, prompt=prompt)
+
+                """
+                           
+                g_prompt_counter = -1
+                e_prompt_counter = -1
+
+                for i, block in enumerate(self.blocks):
+
                     if i in self.g_prompt_layer_idx:
                         if self.use_prefix_tune_for_g_prompt:
                             g_prompt_counter += 1
                             # Prefix tunning, [B, 2, g_prompt_length, num_heads, embed_dim // num_heads]
+                            # idx shape : size 24 (B)
                             idx = torch.tensor([g_prompt_counter] * x.shape[0]).to(x.device)
                             g_prompt = self.g_prompt[idx]
                         else:
@@ -566,6 +618,8 @@ class VisionTransformer(nn.Module):
                             x = block(x)
                     else:
                         x = block(x)
+                
+                """  
             else:
                 x = self.blocks(x)
                 
