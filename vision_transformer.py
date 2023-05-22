@@ -481,6 +481,10 @@ class VisionTransformer(nn.Module):
                 if i in self.e_prompt_layer_idx:
                     self.e_mask[i] = 1
 
+            # make params
+            self.g_mask = nn.Parameter(self.g_mask, requires_grad=True)
+            self.e_mask = nn.Parameter(self.e_mask, requires_grad=True)
+
         if weight_init != 'skip':
             self.init_weights(weight_init)
 
