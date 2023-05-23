@@ -340,6 +340,7 @@ class VisionTransformer(nn.Module):
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
             use_learnable_mask=False, learnable_mask_activation='none', learnable_mask_softmax=False,
+            learnable_mask_init='inidces',
             ):
         """
         Args:
@@ -367,6 +368,7 @@ class VisionTransformer(nn.Module):
             prompt_pool (bool): use prompt pool or not
             use_learnable_mask (bool): use learnable masks for g and e prompt or not
             learnable_mask_activation (str): activation function for learnable mask
+            learnable_mask_init (str): init function for learnable mask (indices or uniform) indices for using the values from original dualprompt paper
         """
         super().__init__()
         assert global_pool in ('', 'avg', 'token')
@@ -481,13 +483,24 @@ class VisionTransformer(nn.Module):
         # mask aproach instead of idx
         if self.use_learnable_mask:
             self.g_mask = torch.zeros((num_heads), dtype=torch.float32)
-            for i in range(num_heads):
-                if i in self.g_prompt_layer_idx:
-                    self.g_mask[i] = 1
+            
             self.e_mask = torch.zeros((num_heads), dtype=torch.float32)
-            for i in range(num_heads):
-                if i in self.e_prompt_layer_idx:
-                    self.e_mask[i] = 1
+            if learnable_mask_init == 'indices':
+                for i in range(num_heads):
+                    if i in self.e_prompt_layer_idx:
+                        self.e_mask[i] = 1
+                    else:
+                        self.e_mask[i] = 0
+                for i in range(num_heads):
+                    if i in self.g_prompt_layer_idx:
+                        self.g_mask[i] = 1
+                    else:
+                        self.g_mask[i] = 0
+            elif learnable_mask_init == 'uniform':
+                nn.init.uniform_(self.e_mask, -1, 1)
+                nn.init.uniform_(self.g_mask, -1, 1)
+            else:
+                raise NotImplementedError
 
             # make params
             self.g_mask = nn.Parameter(self.g_mask, requires_grad=True)
