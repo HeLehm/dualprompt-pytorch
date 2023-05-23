@@ -67,7 +67,7 @@ class MeanHead(nn.Module):
         embedding_list = torch.cat(self.embedding_list, dim=0)
         label_list = torch.cat(self.label_list, dim=0)
 
-        class_list=np.unique(self.train_dataset.labels)
+        class_list=np.unique(label_list)
 
         self.cos.add_classes(len(class_list))
 
