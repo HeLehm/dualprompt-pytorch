@@ -482,18 +482,18 @@ class VisionTransformer(nn.Module):
 
         # mask aproach instead of idx
         if self.use_learnable_mask:
-            self.g_mask = torch.zeros((num_heads), dtype=torch.float32)
-            
-            self.e_mask = torch.zeros((num_heads), dtype=torch.float32)
-            if learnable_mask_init == 'indices':
-                true_value = 1.
-                false_value = 0.
-                if self.learnable_mask_activation == 'sigmoid':
+            true_value = 1.
+            false_value = 0.
+            if self.learnable_mask_activation == 'sigmoid':
                     true_value = 6.
                     false_value = -6.
-                elif self.learnable_mask_activation == 'tanh':
+            elif self.learnable_mask_activation == 'tanh':
                     true_value = 3.
                     false_value = -3.
+            self.g_mask = torch.zeros((num_heads), dtype=torch.float32)
+            self.e_mask = torch.zeros((num_heads), dtype=torch.float32)
+            if learnable_mask_init == 'indices':
+                
                 for i in range(num_heads):
                     if i in self.e_prompt_layer_idx:
                         self.e_mask[i] = true_value
@@ -505,8 +505,8 @@ class VisionTransformer(nn.Module):
                     else:
                         self.g_mask[i] = false_value
             elif learnable_mask_init == 'uniform':
-                nn.init.uniform_(self.e_mask, -1, 1)
-                nn.init.uniform_(self.g_mask, -1, 1)
+                nn.init.uniform_(self.e_mask, -true_value, true_value)
+                nn.init.uniform_(self.g_mask, -true_value, true_value)
             else:
                 raise NotImplementedError
 
