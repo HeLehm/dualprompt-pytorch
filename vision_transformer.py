@@ -339,7 +339,7 @@ class VisionTransformer(nn.Module):
             top_k=None, batchwise_prompt=False, prompt_key_init='uniform', head_type='token', use_prompt_mask=False,
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
-            use_learnable_mask=False, learnable_mask_activation='none',
+            use_learnable_mask=False, learnable_mask_activation='none', learnable_mask_softmax=False,
             ):
         """
         Args:
@@ -385,6 +385,7 @@ class VisionTransformer(nn.Module):
         self.grad_checkpointing = False
         self.use_learnable_mask = use_learnable_mask
         self.learnable_mask_activation = learnable_mask_activation
+        self.learnable_mask_softmax = learnable_mask_softmax
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -614,6 +615,15 @@ class VisionTransformer(nn.Module):
                         block_e_prompt = e_prompt[
                             i
                         ]
+
+                        if self.learnable_mask_softmax:
+                            # apply softmax between the g and e prompt
+                            block_prompts = torch.stack([block_g_prompt, block_e_prompt])
+                            block_prompts = F.softmax(block_prompts, dim=0)
+                            block_g_prompt = block_prompts[0]
+                            block_e_prompt = block_prompts[1]
+                        
+
                     
                         prompt = g_mask[i] * block_g_prompt + e_mask[i] * block_e_prompt
                         
