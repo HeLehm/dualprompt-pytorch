@@ -187,10 +187,14 @@ def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, d
             f"AA@1" : avg_stat[0],
             f"AA@5" : avg_stat[1],
             f"ALoss" : avg_stat[2],
-            "Forgetting" : forgetting,
-            "Backward" : backward,
             f"Task" : task_id+1,
         }
+        if task_id > 0:
+            to_log = {
+                **to_log,
+                "Forgetting" : forgetting,
+                "Backward" : backward,
+            }
         wandb.log(to_log)
 
     return test_stats
