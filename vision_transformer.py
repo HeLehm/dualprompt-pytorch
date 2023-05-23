@@ -607,14 +607,10 @@ class VisionTransformer(nn.Module):
                     
                         # get batch gprompt
                         idx = torch.tensor([i] * x.shape[0]).to(x.device)
-                        block_g_prompt = self.g_prompt[
-                            idx
-                        ]
+                        block_g_prompt = self.g_prompt[idx]
 
                         #get_batch eprompt
-                        block_e_prompt = e_prompt[
-                            i
-                        ]
+                        block_e_prompt = e_prompt[i]
 
                         if self.learnable_mask_softmax:
                             # apply softmax between the g and e prompt
@@ -623,10 +619,7 @@ class VisionTransformer(nn.Module):
                             block_g_prompt = block_prompts[0]
                             block_e_prompt = block_prompts[1]
                         
-
-                        
                         prompt = g_mask[i] * block_g_prompt + e_mask[i] * block_e_prompt
-                        
 
                         # prefix tunning
                         # NOTE kinda dirty

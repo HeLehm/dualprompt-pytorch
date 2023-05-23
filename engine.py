@@ -147,7 +147,7 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
     if args.wandb:
         wandb.log(
             {
-                f"task_{task_id}/eval/" + k: v
+                k + f"/eval/task_{task_id}": v
                 for k, v in metrics.items()  
             }
         )
@@ -267,7 +267,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
             if args.wandb:
                 wandb.log(
                     {
-                        f"task_{task_id}/train/" + k: v
+                        k + f"/train/task_{task_id}" + k: v
                         for k, v in train_stats.items()  
                     }
                 )
@@ -276,12 +276,13 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)
         if args.wandb and hasattr(model, 'g_mask') and hasattr(model, 'e_mask'):
             g_mask, e_mask = model.get_learnable_masks()
-            for i, e in enumerate(g_mask.detach().tolist()):
-                wandb.log({f"g_mask/head_{i}" : e})
-            
-            for i, e in enumerate(e_mask.detach().tolist()):
-                wandb.log({f"e_mask/head_{i}" : e})
-
+            for i, g,e in enumerate(zip(g_mask.detach().tolist(), e_mask.detach().tolist())):
+                wandb.log(
+                    {
+                        f"g_mask/head_{i}" : g,
+                        f"e_mask/head_{i}" : e,
+                    }
+                )
 
         if args.output_dir and utils.is_main_process():
             Path(os.path.join(args.output_dir, 'checkpoint')).mkdir(parents=True, exist_ok=True)
