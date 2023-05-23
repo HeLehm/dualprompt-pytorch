@@ -24,7 +24,7 @@ class CosineLinear(nn.Module):
         self.weight = nn.Parameter(
             torch.cat(
                 [
-                    self.weight, cos.weight
+                    self.weight, cos.weight.to(self.weight.device)
                 ], dim=0
             ),
             requires_grad=self.requires_grad
