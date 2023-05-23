@@ -45,7 +45,7 @@ def train_cos_head_if_needed(original_model, head, data_loader, task_id, args):
             output = original_model(input)
             cls_features = output['pre_logits']
 
-        head(cls_features, train=True)
+        head(cls_features, target)
     head.after_train()
 
 
