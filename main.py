@@ -89,6 +89,7 @@ def main(args):
         use_learnable_mask=args.use_learnable_mask,
         learnable_mask_activation=args.learnable_mask_act,
         learnable_mask_softmax=args.learnable_mask_softmax,
+        learnable_mask_init=args.learnable_mask_init,
     )
     original_model.to(device)
     model.to(device)  
