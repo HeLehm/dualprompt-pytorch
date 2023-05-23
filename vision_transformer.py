@@ -567,20 +567,14 @@ class VisionTransformer(nn.Module):
                 if self.use_learnable_mask:
                     # use the mask code
 
-                    # sigmoid mask
-                    self.g_mask = F.sigmoid(self.g_mask)
-                    self.e_mask = F.sigmoid(self.e_mask)
-            
                     for i, block in enumerate(self.blocks):
                     
                         g_mask = self.g_mask[i]
                         e_mask = self.e_mask[i]
 
 
-                        if self.use_learnable_mask:
-                            # sigmoid mask
-                            g_mask = F.sigmoid(g_mask)
-                            e_mask = F.sigmoid(e_mask)
+                        g_mask = F.sigmoid(g_mask)
+                        e_mask = F.sigmoid(e_mask)
 
 
                         # get batch gprompt
