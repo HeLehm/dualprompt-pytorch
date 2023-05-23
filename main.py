@@ -88,6 +88,7 @@ def main(args):
         same_key_value=args.same_key_value,
         use_learnable_mask=args.use_learnable_mask,
         learnable_mask_activation=args.learnable_mask_act,
+        learnable_mask_softmax=args.learnable_mask_softmax,
     )
     original_model.to(device)
     model.to(device)  
