@@ -66,7 +66,9 @@ def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module,
     header = f'Train: Epoch[{epoch+1:{int(math.log10(args.epochs))+1}}/{args.epochs}]'
 
     if args.use_mean_head:
-        train_cos_head_if_needed(original_model, model.head, task_id, args)
+        train_cos_head_if_needed(
+            original_model, model.head, data_loader, task_id, args
+        )
             
     
     for input, target in metric_logger.log_every(data_loader, args.print_freq, header):
