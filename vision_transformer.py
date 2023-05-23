@@ -42,6 +42,7 @@ from timm.models.registry import register_model
 
 from prompt import EPrompt
 from attention import PreT_Attention
+from mean_few_shot import MeanHead
 
 _logger = logging.getLogger(__name__)
 
@@ -340,7 +341,7 @@ class VisionTransformer(nn.Module):
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
             use_learnable_mask=False, learnable_mask_activation='none', learnable_mask_softmax=False,
-            learnable_mask_init='inidces',
+            learnable_mask_init='inidces', use_mean_head=False,
             ):
         """
         Args:
@@ -478,6 +479,8 @@ class VisionTransformer(nn.Module):
 
         # Classifier Head
         self.fc_norm = norm_layer(embed_dim) if use_fc_norm else nn.Identity()
+
+        self.head = MeanHead(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
         # mask aproach instead of idx

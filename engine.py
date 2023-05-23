@@ -30,6 +30,25 @@ import utils
 
 import wandb
 
+
+def train_cos_head_if_needed(original_model, head, data_loader, task_id, args):
+    # check if trained for the first time
+    if not head.before_train(task_id):
+        # task has already been trained before (not first epoch)
+        return
+    
+    for input, target in data_loader:
+        input = input.to(args.device, non_blocking=True)
+        target = target.to(args.device, non_blocking=True)
+
+        with torch.no_grad():
+            output = original_model(input)
+            cls_features = output['pre_logits']
+
+        head(cls_features, train=True)
+    head.after_train()
+
+
 def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module, 
                     criterion, data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0,
@@ -45,6 +64,10 @@ def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module,
     metric_logger.add_meter('Lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('Loss', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
     header = f'Train: Epoch[{epoch+1:{int(math.log10(args.epochs))+1}}/{args.epochs}]'
+
+    if args.use_mean_head:
+        train_cos_head_if_needed(original_model, model.head, task_id, args)
+            
     
     for input, target in metric_logger.log_every(data_loader, args.print_freq, header):
         input = input.to(device, non_blocking=True)
