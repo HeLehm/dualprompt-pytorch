@@ -624,10 +624,19 @@ class VisionTransformer(nn.Module):
                             block_e_prompt = block_prompts[1]
                         
 
-                    
+                        
                         prompt = g_mask[i] * block_g_prompt + e_mask[i] * block_e_prompt
                         
-                        x = block(x, prompt=prompt)
+
+                        # prefix tunning
+                        # NOTE kinda dirty
+                        if self.use_prefix_tune_for_e_prompt and self.use_prefix_tune_for_g_prompt:
+                            prompt_to_use = prompt
+                        else:
+                            prompt_to_use = None
+                            x = torch.cat([prompt, x], dim=1)
+                        
+                        x = block(x, prompt=prompt_to_use)
 
                 else:
                     # use the regular code
