@@ -339,7 +339,8 @@ class VisionTransformer(nn.Module):
             top_k=None, batchwise_prompt=False, prompt_key_init='uniform', head_type='token', use_prompt_mask=False,
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
-            use_learnable_mask=False,):
+            use_learnable_mask=False, learnable_mask_activation='none',
+            ):
         """
         Args:
             img_size (int, tuple): input image size
@@ -365,6 +366,7 @@ class VisionTransformer(nn.Module):
             block_fn: (nn.Module): transformer block
             prompt_pool (bool): use prompt pool or not
             use_learnable_mask (bool): use learnable masks for g and e prompt or not
+            learnable_mask_activation (str): activation function for learnable mask
         """
         super().__init__()
         assert global_pool in ('', 'avg', 'token')
@@ -382,6 +384,7 @@ class VisionTransformer(nn.Module):
         self.no_embed_class = no_embed_class
         self.grad_checkpointing = False
         self.use_learnable_mask = use_learnable_mask
+        self.learnable_mask_activation = learnable_mask_activation
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -534,6 +537,36 @@ class VisionTransformer(nn.Module):
             self.global_pool = global_pool
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
+    def get_learnable_masks(self):
+        """
+        Can return None
+        Returns:
+            g_mask: [num_heads]
+            e_mask: [num_heads]
+        """
+        if not self.use_learnable_mask:
+            return None
+        else:
+            acc = None
+            g_mask = self.g_mask
+            e_mask = self.e_mask
+            if self.learnable_mask_activation == 'none':
+                return g_mask, e_mask
+            elif self.learnable_mask_activation == 'sigmoid':
+                acc = F.sigmoid
+            elif self.learnable_mask_activation == 'relu':
+                acc = F.relu
+            elif self.learnable_mask_activation == 'tanh':
+                acc = F.tanh
+            elif self.learnable_mask_activation == 'softmax':
+                acc = F.softmax
+            else:
+                raise NotImplementedError
+            return acc(g_mask), acc(e_mask)
+            
+
+
+
     def forward_features(self, x, task_id=-1, cls_features=None, train=False):
         x = self.patch_embed(x)
 
@@ -567,16 +600,10 @@ class VisionTransformer(nn.Module):
                 if self.use_learnable_mask:
                     # use the mask code
 
+                    g_mask, e_mask = self.get_learnable_masks()
+
                     for i, block in enumerate(self.blocks):
                     
-                        g_mask = self.g_mask[i]
-                        e_mask = self.e_mask[i]
-
-
-                        g_mask = F.sigmoid(g_mask)
-                        e_mask = F.sigmoid(e_mask)
-
-
                         # get batch gprompt
                         idx = torch.tensor([i] * x.shape[0]).to(x.device)
                         block_g_prompt = self.g_prompt[
@@ -588,7 +615,7 @@ class VisionTransformer(nn.Module):
                             i
                         ]
                     
-                        prompt = g_mask * block_g_prompt + e_mask * block_e_prompt
+                        prompt = g_mask[i] * block_g_prompt + e_mask[i] * block_e_prompt
                         
                         x = block(x, prompt=prompt)
 

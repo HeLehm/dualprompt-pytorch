@@ -275,10 +275,11 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
         test_stats = evaluate_till_now(model=model, original_model=original_model, data_loader=data_loader, device=device, 
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)
         if args.wandb and hasattr(model, 'g_mask') and hasattr(model, 'e_mask'):
-            for i, e in enumerate(F.sigmoid(model.g_mask.detach()).tolist()):
+            g_mask, e_mask = model.get_learnable_masks()
+            for i, e in enumerate(g_mask.detach().tolist()):
                 wandb.log({f"g_mask/head_{i}" : e})
             
-            for i, e in enumerate(F.sigmoid(model.e_mask.detach()).tolist()):
+            for i, e in enumerate(e_mask.detach().tolist()):
                 wandb.log({f"e_mask/head_{i}" : e})
 
 

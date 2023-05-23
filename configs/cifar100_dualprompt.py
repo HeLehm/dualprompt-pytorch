@@ -113,4 +113,5 @@ def get_args_parser(subparsers):
     subparsers.add_argument('--print_freq', type=int, default=10, help = 'The frequency of printing')
 
     # Learnable Masks Parameters
-    subparsers.add_argument('--use_learnable_mask', default=True, type=bool, help='if using learnable mask')
+    subparsers.add_argument('--use_learnable_mask', default=False, type=bool, help='if using learnable mask')
+    subparsers.add_argumanet('--learnable_mask_act', default='sigmoid', type=str, help='the activation function of learnable mask (can be None)')
