@@ -479,9 +479,11 @@ class VisionTransformer(nn.Module):
 
         # Classifier Head
         self.fc_norm = norm_layer(embed_dim) if use_fc_norm else nn.Identity()
-
-        self.head = MeanHead(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
-        self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        
+        if use_mean_head:
+            self.head = MeanHead(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        else:
+            self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
         # mask aproach instead of idx
         if self.use_learnable_mask:
