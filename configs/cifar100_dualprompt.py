@@ -117,6 +117,7 @@ def get_args_parser(subparsers):
     subparsers.add_argument('--learnable_mask_act', default='sigmoid', type=str, help='the activation function of learnable mask (can be None)')
     subparsers.add_argument('--learnable_mask_softmax', default=False, type=bool, help='if sofmax is used between g and e prompt')
     subparsers.add_argument('--learnable_mask_init', default='uniform', type=str, help='the initialization method of learnable mask, uniform or inidces')
+    subparsers.add_argument('--learnable_mask_only_first_task', default=False, type=bool, help='if only the first task can train the learnable mask')
     
     # Mean Head Parameters
     subparsers.add_argument('--use_mean_head', default=False, type=bool, help='if using mean head')

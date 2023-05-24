@@ -37,7 +37,7 @@ def train_cos_head_if_needed(original_model, head, data_loader, task_id, args):
         # task has already been trained before (not first epoch)
         return
     
-    for input, target in data_loader:
+    for i, (input, target) in enumerate(data_loader):
         input = input.to(args.device, non_blocking=True)
         target = target.to(args.device, non_blocking=True)
 
@@ -64,12 +64,6 @@ def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module,
     metric_logger.add_meter('Lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('Loss', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
     header = f'Train: Epoch[{epoch+1:{int(math.log10(args.epochs))+1}}/{args.epochs}]'
-
-    if args.use_mean_head:
-        train_cos_head_if_needed(
-            original_model, model.head, data_loader, task_id, args
-        )
-            
     
     for input, target in metric_logger.log_every(data_loader, args.print_freq, header):
         input = input.to(device, non_blocking=True)
@@ -279,8 +273,19 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
         # Create new optimizer for each task to clear optimizer status
         if task_id > 0 and args.reinit_optimizer:
             optimizer = create_optimizer(args, model)
-        
-        for epoch in range(args.epochs):            
+
+
+        if args.use_mean_head:
+            print("Training Mean Head")
+            train_cos_head_if_needed(
+                original_model, model.head, data_loader[task_id]['train'], task_id, args
+            )
+
+        # init these values so epochs = 0 is possible 
+        epoch = 0
+        train_stats = {}
+        test_stats = {}
+        for epoch in range(args.epochs):
             train_stats = train_one_epoch(model=model, original_model=original_model, criterion=criterion, 
                                         data_loader=data_loader[task_id]['train'], optimizer=optimizer, 
                                         device=device, epoch=epoch, max_norm=args.clip_grad, 
@@ -296,6 +301,14 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                         for k, v in train_stats.items()  
                     }
                 )
+
+        if args.use_learnable_mask and args.learnable_mask_only_first_task:
+            print("Freezing learnable mask")
+            # reuire grad False for learnable mask
+            if hasattr(model, 'g_mask'):
+                model.g_mask.requires_grad = False
+            if hasattr(model, 'e_mask'):
+                model.e_mask.requires_grad = False
 
         test_stats = evaluate_till_now(model=model, original_model=original_model, data_loader=data_loader, device=device, 
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)

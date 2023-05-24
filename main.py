@@ -91,6 +91,7 @@ def main(args):
         learnable_mask_softmax=args.learnable_mask_softmax,
         learnable_mask_init=args.learnable_mask_init,
         use_mean_head=args.use_mean_head,
+        learnable_mask_only_first_task=args.learnable_mask_only_first_task,
     )
     original_model.to(device)
     model.to(device)  
