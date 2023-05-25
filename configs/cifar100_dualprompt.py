@@ -119,6 +119,12 @@ def get_args_parser(subparsers):
     subparsers.add_argument('--learnable_mask_softmax', default=False, type=bool, help='if sofmax is used between g and e prompt')
     subparsers.add_argument('--learnable_mask_init', default='uniform', type=str, help='the initialization method of learnable mask, uniform or inidces')
     subparsers.add_argument('--learnable_mask_only_first_task', default=False, type=bool, help='if only the first task can train the learnable mask')
+    # mask like MaskConnect Paper
+    subparsers.add_argument('--learnable_mask_binary', default=False, type=bool, help='if using binary mask kind of like MaskConnect Paper')
+    subparsers.add_argument('--learnable_mask_g_binary_top_k', default=3, type=int, help='the top k value of the binary mask (for g prompt)')
+    subparsers.add_argument('--learnable_mask_e_binary_top_k', default=3, type=int, help='the top k value of the binary mask (for e prompt)')
+    subparsers.add_argument('--learnable_mask_gumbel_temperature', default=0.3, type=float, help='the temperature of the gumbel softmax (for both prompts)')
+
     
     # Mean Head Parameters
     subparsers.add_argument('--use_mean_head', default=False, type=bool, help='if using mean head')

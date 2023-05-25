@@ -43,6 +43,7 @@ from timm.models.registry import register_model
 from prompt import EPrompt
 from attention import PreT_Attention
 from mean_few_shot import MeanHead
+from gumbel import gumbel_topk_binary_mask
 
 _logger = logging.getLogger(__name__)
 
@@ -342,6 +343,8 @@ class VisionTransformer(nn.Module):
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
             use_learnable_mask=False, learnable_mask_activation='none', learnable_mask_softmax=False,
             learnable_mask_init='inidces', use_mean_head=False,
+            learnable_mask_binary=False, learnable_mask_g_binary_top_k=0, learnable_mask_e_binary_top_k=0,
+            learnable_mask_gumbel_temperature=0.4,
             ):
         """
         Args:
@@ -389,6 +392,10 @@ class VisionTransformer(nn.Module):
         self.use_learnable_mask = use_learnable_mask
         self.learnable_mask_activation = learnable_mask_activation
         self.learnable_mask_softmax = learnable_mask_softmax
+        self.learnable_mask_binary = learnable_mask_binary
+        self.learnable_mask_g_binary_top_k = learnable_mask_g_binary_top_k
+        self.learnable_mask_e_binary_top_k = learnable_mask_e_binary_top_k
+        self.learnable_mask_gumbel_temperature = learnable_mask_gumbel_temperature
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -487,36 +494,44 @@ class VisionTransformer(nn.Module):
 
         # mask aproach instead of idx
         if self.use_learnable_mask:
-            true_value = 1.
-            false_value = 0.
-            if self.learnable_mask_activation == 'sigmoid':
-                    true_value = 6.
-                    false_value = -6.
-            elif self.learnable_mask_activation == 'tanh':
-                    true_value = 3.
-                    false_value = -3.
             self.g_mask = torch.zeros((num_heads), dtype=torch.float32)
             self.e_mask = torch.zeros((num_heads), dtype=torch.float32)
-            if learnable_mask_init == 'indices':
-                
-                for i in range(num_heads):
-                    if i in self.e_prompt_layer_idx:
-                        self.e_mask[i] = true_value
-                    else:
-                        self.e_mask[i] = false_value
-                for i in range(num_heads):
-                    if i in self.g_prompt_layer_idx:
-                        self.g_mask[i] = true_value
-                    else:
-                        self.g_mask[i] = false_value
-            elif learnable_mask_init == 'uniform':
-                nn.init.uniform_(self.e_mask, -true_value, true_value)
-                nn.init.uniform_(self.g_mask, -true_value, true_value)
-            elif learnable_mask_init == 'normal':
-                nn.init.normal_(self.e_mask, 0, 0.1)
-                nn.init.normal_(self.g_mask, 0, 0.1)
+            
+            if self.learnable_mask_binary:
+                # init with normal of mean 0.5
+                nn.init.normal_(self.g_mask, 0.5, 0.1)
+                nn.init.normal_(self.e_mask, 0.5, 0.1)
             else:
-                raise NotImplementedError
+                
+                true_value = 1.
+                false_value = 0.
+                if self.learnable_mask_activation == 'sigmoid':
+                    true_value = 6.
+                    false_value = -6.
+                elif self.learnable_mask_activation == 'tanh':
+                    true_value = 3.
+                    false_value = -3.
+            
+                if learnable_mask_init == 'indices':
+                
+                    for i in range(num_heads):
+                        if i in self.e_prompt_layer_idx:
+                            self.e_mask[i] = true_value
+                        else:
+                            self.e_mask[i] = false_value
+                    for i in range(num_heads):
+                        if i in self.g_prompt_layer_idx:
+                            self.g_mask[i] = true_value
+                        else:
+                            self.g_mask[i] = false_value
+                elif learnable_mask_init == 'uniform':
+                    nn.init.uniform_(self.e_mask, -true_value, true_value)
+                    nn.init.uniform_(self.g_mask, -true_value, true_value)
+                elif learnable_mask_init == 'normal':
+                    nn.init.normal_(self.e_mask, 0, 0.1)
+                    nn.init.normal_(self.g_mask, 0, 0.1)
+                else:
+                    raise NotImplementedError
 
             # make params
             self.g_mask = nn.Parameter(self.g_mask, requires_grad=True)
@@ -567,7 +582,7 @@ class VisionTransformer(nn.Module):
             self.global_pool = global_pool
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def get_learnable_masks(self):
+    def get_learnable_masks(self, batch_size=None, train=False):
         """
         Can return None
         Returns:
@@ -577,22 +592,35 @@ class VisionTransformer(nn.Module):
         if not self.use_learnable_mask:
             return None
         else:
-            acc = None
             g_mask = self.g_mask
             e_mask = self.e_mask
-            if self.learnable_mask_activation == 'none':
-                return g_mask, e_mask
-            elif self.learnable_mask_activation == 'sigmoid':
-                acc = F.sigmoid
-            elif self.learnable_mask_activation == 'relu':
-                acc = F.relu
-            elif self.learnable_mask_activation == 'tanh':
-                acc = F.tanh
-            elif self.learnable_mask_activation == 'softmax':
-                acc = F.softmax
+            if not self.learnable_mask_binary:
+                acc = None
+                if self.learnable_mask_activation == 'none':
+                    return g_mask, e_mask
+                elif self.learnable_mask_activation == 'sigmoid':
+                    acc = F.sigmoid
+                elif self.learnable_mask_activation == 'relu':
+                    acc = F.relu
+                elif self.learnable_mask_activation == 'tanh':
+                    acc = F.tanh
+                elif self.learnable_mask_activation == 'softmax':
+                    acc = F.softmax
+                else:
+                    raise NotImplementedError
+                return acc(g_mask), acc(e_mask)
             else:
-                raise NotImplementedError
-            return acc(g_mask), acc(e_mask)
+                # binary mask
+                # extend to batch size if not None
+                if batch_size is not None:
+                    g_mask = g_mask.unsqueeze(0).expand(batch_size, -1)
+                    e_mask = e_mask.unsqueeze(0).expand(batch_size, -1)
+
+                g_mask = gumbel_topk_binary_mask(g_mask, self.learnable_mask_g_binary_top_k, self.learnable_mask_gumbel_temperature if train else 0.)
+                e_mask = gumbel_topk_binary_mask(e_mask, self.learnable_mask_e_binary_top_k, self.learnable_mask_gumbel_temperature if train else 0.)
+                return g_mask, e_mask
+                
+
             
 
 
@@ -630,7 +658,7 @@ class VisionTransformer(nn.Module):
                 if self.use_learnable_mask:
                     # use the mask code
 
-                    g_mask, e_mask = self.get_learnable_masks()
+                    g_mask, e_mask = self.get_learnable_masks(batch_size=x.shape[0], train=train)
 
                     for i, block in enumerate(self.blocks):
                     
@@ -648,7 +676,13 @@ class VisionTransformer(nn.Module):
                             block_g_prompt = block_prompts[0]
                             block_e_prompt = block_prompts[1]
                         
-                        prompt = g_mask[i] * block_g_prompt + e_mask[i] * block_e_prompt
+                        if not self.learnable_mask_binary:
+                            prompt = g_mask[i] * block_g_prompt + e_mask[i] * block_e_prompt
+                        else:
+                            this_g_mask = g_mask[:,i].unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+                            this_e_mask = e_mask[:,i].unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+                            prompt = this_g_mask * block_g_prompt + this_e_mask * block_e_prompt
+
 
                         # prefix tunning
                         # NOTE kinda dirty
