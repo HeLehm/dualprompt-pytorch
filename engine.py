@@ -319,7 +319,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)
         if args.wandb and hasattr(model, 'g_mask') and hasattr(model, 'e_mask'):
             g_mask, e_mask = model.get_learnable_masks()
-            for i, (g,e) in enumerate(zip(g_mask.detach().tolist(), e_mask.detach().tolist())):
+            for i, (g,e) in enumerate(zip(g_mask.float().detach().tolist(), e_mask.detach().float().tolist())):
                 wandb.log(
                     {
                         f"g_mask/head_{i}" : g,
