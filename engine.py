@@ -309,6 +309,11 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                 model.g_mask.requires_grad = False
             if hasattr(model, 'e_mask'):
                 model.e_mask.requires_grad = False
+        
+        if args.use_g_prompt and args.g_prompt_only_first_task:
+            # freeze g-prompt
+            print("Freezing g-prompt")
+            model.g_prompt.requires_grad = False
 
         test_stats = evaluate_till_now(model=model, original_model=original_model, data_loader=data_loader, device=device, 
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)
