@@ -512,6 +512,9 @@ class VisionTransformer(nn.Module):
             elif learnable_mask_init == 'uniform':
                 nn.init.uniform_(self.e_mask, -true_value, true_value)
                 nn.init.uniform_(self.g_mask, -true_value, true_value)
+            elif learnable_mask_init == 'normal':
+                nn.init.normal_(self.e_mask, 0, 0.1)
+                nn.init.normal_(self.g_mask, 0, 0.1)
             else:
                 raise NotImplementedError
 
