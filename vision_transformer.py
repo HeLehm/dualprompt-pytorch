@@ -43,7 +43,7 @@ from timm.models.registry import register_model
 from prompt import EPrompt
 from attention import PreT_Attention
 from mean_few_shot import MeanHead
-from gumbel import gumbel_topk_binary_mask
+from gumbel import choose_mask
 
 _logger = logging.getLogger(__name__)
 
@@ -344,7 +344,7 @@ class VisionTransformer(nn.Module):
             use_learnable_mask=False, learnable_mask_activation='none', learnable_mask_softmax=False,
             learnable_mask_init='inidces', use_mean_head=False,
             learnable_mask_binary=False, learnable_mask_g_binary_top_k=0, learnable_mask_e_binary_top_k=0,
-            learnable_mask_gumbel_temperature=0.4,
+            learnable_mask_max_noise=0.0,
             ):
         """
         Args:
@@ -395,7 +395,7 @@ class VisionTransformer(nn.Module):
         self.learnable_mask_binary = learnable_mask_binary
         self.learnable_mask_g_binary_top_k = learnable_mask_g_binary_top_k
         self.learnable_mask_e_binary_top_k = learnable_mask_e_binary_top_k
-        self.learnable_mask_gumbel_temperature = learnable_mask_gumbel_temperature
+        self.learnable_mask_max_noise = learnable_mask_max_noise
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -615,9 +615,8 @@ class VisionTransformer(nn.Module):
                 if batch_size is not None:
                     g_mask = g_mask.unsqueeze(0).expand(batch_size, -1)
                     e_mask = e_mask.unsqueeze(0).expand(batch_size, -1)
-
-                g_mask = gumbel_topk_binary_mask(g_mask, self.learnable_mask_g_binary_top_k, self.learnable_mask_gumbel_temperature if train else 0.)
-                e_mask = gumbel_topk_binary_mask(e_mask, self.learnable_mask_e_binary_top_k, self.learnable_mask_gumbel_temperature if train else 0.)
+                
+                g_mask, e_mask = choose_mask(g_mask, e_mask, self.learnable_mask_g_binary_top_k, self.learnable_mask_e_binary_top_k, max_noise=self.learnable_mask_max_noise if train else 0.0)
                 return g_mask, e_mask
                 
 

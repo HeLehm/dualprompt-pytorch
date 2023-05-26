@@ -123,7 +123,7 @@ def get_args_parser(subparsers):
     subparsers.add_argument('--learnable_mask_binary', default=False, type=bool, help='if using binary mask kind of like MaskConnect Paper')
     subparsers.add_argument('--learnable_mask_g_binary_top_k', default=3, type=int, help='the top k value of the binary mask (for g prompt)')
     subparsers.add_argument('--learnable_mask_e_binary_top_k', default=3, type=int, help='the top k value of the binary mask (for e prompt)')
-    subparsers.add_argument('--learnable_mask_gumbel_temperature', default=0.3, type=float, help='the temperature of the gumbel softmax (for both prompts)')
+    subparsers.add_argument('--learnable_mask_max_noise', default=0.3, type=float, help='the max noise of the binary mask')
 
     
     # Mean Head Parameters
