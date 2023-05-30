@@ -66,3 +66,8 @@ if __name__ == "__main__":
 
     print(g_mask)
     print(e_mask)
+
+    g_mask, e_mask = choose_mask(mask1, mask2, max_noise=0.0)
+
+    print(g_mask)
+    print(e_mask)
