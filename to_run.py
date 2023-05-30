@@ -1,6 +1,8 @@
 import os
 if __name__ == "__main__":
     device = "cuda"
+    slice_start = 6
+
     base_cmd =  f"python main.py --wandb cifar100_dualprompt --device {device} --batch-size 48 --data-path ./local_datasets/ --output_dir '' "
     cmds = [
         base_cmd , # like in paper
@@ -29,6 +31,6 @@ if __name__ == "__main__":
             cmds_2.append(cmd1)
 
     # run
-    for cmd in cmds_2:
+    for cmd in cmds_2[slice_start:]:
         print(cmd)
         os.system(cmd)
