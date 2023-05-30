@@ -1,7 +1,7 @@
 import os
 if __name__ == "__main__":
     device = "cuda"
-    base_cmd =  f"main.py --wandb cifar100_dualprompt --device {device} --batch-size 48 --data-path ./local_datasets/ --output_dir '' "
+    base_cmd =  f"python main.py --wandb cifar100_dualprompt --device {device} --batch-size 48 --data-path ./local_datasets/ --output_dir '' "
     cmds = [
         base_cmd , # like in paper
         base_cmd + ' --g_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11 --e_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11', # all prompt layers
