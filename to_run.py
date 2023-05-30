@@ -19,6 +19,7 @@ if __name__ == "__main__":
         cmd1 = cmd + ' --dataset "Split-CIFAR100"'
         cmd2 = cmd + ' --dataset "Split-CUB200"'
         cmds_1.append(cmd1)
+        cmds_1.append(cmd2)
 
     # rotate seed
     cmds_2 = []
