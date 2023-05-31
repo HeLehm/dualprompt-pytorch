@@ -6,12 +6,13 @@ if __name__ == "__main__":
     base_cmd =  f"python main.py --wandb cifar100_dualprompt --device {device} --batch-size 48 --data-path ./local_datasets/ --output_dir '' "
     cmds = [
         #base_cmd , # like in paper
-        base_cmd + ' --use_learnable_mask True --learnable_mask_init inidces --g_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11 --e_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11', # all prompt layers
+        #base_cmd + ' --use_learnable_mask True --learnable_mask_init inidces --g_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11 --e_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11', # all prompt layers
         #base_cmd + ' --e_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11', # all e prompt layers
         #base_cmd + ' --use_learnable_mask True', # learnable mask
         #base_cmd + ' --use_learnable_mask True --learnable_mask_only_first_task True',
         #base_cmd + ' --use_learnable_mask True --learnable_mask_binary True --learnable_mask_max_noise 0.5 --learnable_mask_g_binary_top_k 2 --learnable_mask_e_binary_top_k 3',
         #base_cmd + ' --use_learnable_mask True --learnable_mask_binary True --learnable_mask_max_noise 0.5 --learnable_mask_g_binary_top_k 3 --learnable_mask_e_binary_top_k 5',
+        base_cmd + ' --use_learnable_mask True --learnable_mask_init indices --g_prompt_layer_idx 0 1 --e_prompt_layer_idx 0 1 2 3 4 5 6 7 8 9 10 11', # all prompt layers
     ]
 
     # merge with both datasets 
