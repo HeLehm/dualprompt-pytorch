@@ -243,7 +243,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                                 raise NotImplementedError("Feel free to implement this")
                             else:
                                 # TODO check if this is right
-                                for e_prompt in model.e_prompt:
+                                for e_prompt in model.e_prompts:
                                     e_prompt.prompt.grad.zero_()
                                     e_prompt.prompt[cur_idx] = e_prompt.prompt[prev_idx]
                                 optimizer.param_groups[0]['params'] = model.parameters()
