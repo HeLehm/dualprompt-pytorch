@@ -17,6 +17,8 @@ import json
 from typing import Iterable
 from pathlib import Path
 
+import wandb
+
 import torch
 
 import numpy as np
@@ -139,7 +141,17 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
           .format(top1=metric_logger.meters['Acc@1'], top5=metric_logger.meters['Acc@5'], losses=metric_logger.meters['Loss']))
 
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    metrics = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+    if args.wandb:
+        wandb.log(
+            {
+                k + f"/eval/task_{task_id}": v
+                for k, v in metrics.items()  
+            }
+        )
+
+    return metrics
 
 
 @torch.no_grad()
@@ -169,6 +181,21 @@ def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, d
 
         result_str += "\tForgetting: {:.4f}\tBackward: {:.4f}".format(forgetting, backward)
     print(result_str)
+
+    if args.wandb:
+        to_log = {
+            f"AA@1" : avg_stat[0],
+            f"AA@5" : avg_stat[1],
+            f"ALoss" : avg_stat[2],
+            f"Task" : task_id+1,
+        }
+        if task_id > 0:
+            to_log = {
+                **to_log,
+                "Forgetting" : forgetting,
+                "Backward" : backward,
+            }
+        wandb.log(to_log)
 
     return test_stats
 
@@ -236,6 +263,15 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
             
             if lr_scheduler:
                 lr_scheduler.step(epoch)
+
+            if args.wandb:
+                wandb.log(
+                    {
+                        k + f"/train/task_{task_id}" + k: v
+                        for k, v in train_stats.items()  
+                    }
+                )
+
 
         test_stats = evaluate_till_now(model=model, original_model=original_model, data_loader=data_loader, device=device, 
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)

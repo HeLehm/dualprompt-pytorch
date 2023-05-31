@@ -26,11 +26,16 @@ from engine import *
 import models
 import utils
 
+import wandb
+
 import warnings
 warnings.filterwarnings('ignore', 'Argument interpolation should be of type InterpolationMode instead of int')
 
 def main(args):
     utils.init_distributed_mode(args)
+
+    if args.wandb:
+        wandb.init(project='dualprompt', config=args)
 
     device = torch.device(args.device)
 
@@ -150,6 +155,8 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('DualPrompt training and evaluation configs')
+
+    parser.add_argument('--wandb', action='store_true', help='use wandb')
     
     config = parser.parse_known_args()[-1][0]
 
