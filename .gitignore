@@ -6,3 +6,4 @@ checkpoint/
 .python-version
 .vscode
 local_datasets/
+wandb/

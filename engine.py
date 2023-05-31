@@ -221,7 +221,8 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                 else:
                     cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
                     prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
-
+                    
+                    # TODO: make this doamble with e_prompt_use_prev_emb
                     with torch.no_grad():
                         if args.distributed:
                             model.module.e_prompt.prompt.grad.zero_()

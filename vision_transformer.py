@@ -338,7 +338,9 @@ class VisionTransformer(nn.Module):
             prompt_length=None, embedding_key='cls', prompt_init='uniform', prompt_pool=False, prompt_key=False, pool_size=None,
             top_k=None, batchwise_prompt=False, prompt_key_init='uniform', head_type='token', use_prompt_mask=False,
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
-            use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,):
+            use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
+            e_prompt_use_prev_emb=False,
+            ):
         """
         Args:
             img_size (int, tuple): input image size
@@ -363,6 +365,7 @@ class VisionTransformer(nn.Module):
             act_layer: (nn.Module): MLP activation layer
             block_fn: (nn.Module): transformer block
             prompt_pool (bool): use prompt pool or not
+            e_prompt_use_prev_emb (bool): use previous embedding for e-prompt. I false use image emb, if true use previous embedding (at layer 0, use image emb)
         """
         super().__init__()
         assert global_pool in ('', 'avg', 'token')
@@ -401,6 +404,7 @@ class VisionTransformer(nn.Module):
         self.use_prefix_tune_for_g_prompt = use_prefix_tune_for_g_prompt
         
         self.use_e_prompt = use_e_prompt
+        self.e_prompt_use_prev_emb = e_prompt_use_prev_emb
         self.e_prompt_layer_idx = e_prompt_layer_idx
         num_e_prompt = len(self.e_prompt_layer_idx) if self.e_prompt_layer_idx is not None else 0
         self.use_prefix_tune_for_e_prompt = use_prefix_tune_for_e_prompt
@@ -437,7 +441,31 @@ class VisionTransformer(nn.Module):
             self.g_prompt = None
         
         if use_e_prompt and e_prompt_layer_idx is not None:
-            self.e_prompt = EPrompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
+            self.e_prompt_pool_size = pool_size
+            self.e_prompt_top_k = top_k
+            if self.e_prompt_use_prev_emb:
+                self.e_prompts = nn.ModuleList([
+                    EPrompt(
+                        length=prompt_length,
+                        embed_dim=embed_dim,
+                        embedding_key=embedding_key,
+                        prompt_init=prompt_init,
+                        prompt_pool=prompt_pool,
+                        prompt_key=prompt_key,
+                        pool_size=pool_size,
+                        top_k=top_k,
+                        batchwise_prompt=batchwise_prompt,
+                        prompt_key_init=prompt_key_init,
+                        num_layers=1, # changed from num_e_prompt to 1
+                        use_prefix_tune_for_e_prompt=use_prefix_tune_for_e_prompt,
+                        num_heads=num_heads,
+                        same_key_value=same_key_value
+                    )
+                    for _ in range(len(e_prompt_layer_idx))
+                ])
+                
+            else:
+                self.e_prompt = EPrompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
                     prompt_pool=prompt_pool, prompt_key=prompt_key, pool_size=pool_size, top_k=top_k, batchwise_prompt=batchwise_prompt,
                     prompt_key_init=prompt_key_init, num_layers=num_e_prompt, use_prefix_tune_for_e_prompt=use_prefix_tune_for_e_prompt,
                     num_heads=num_heads, same_key_value=same_key_value)
@@ -518,6 +546,8 @@ class VisionTransformer(nn.Module):
     def forward_features(self, x, task_id=-1, cls_features=None, train=False):
         x = self.patch_embed(x)
 
+        # x shape: [B, num_patches + 1, embed_dim]
+
         if self.cls_token is not None:
             x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
         
@@ -528,11 +558,11 @@ class VisionTransformer(nn.Module):
         else:
             if self.use_g_prompt or self.use_e_prompt:
                 if self.use_prompt_mask and train:
-                    start = task_id * self.e_prompt.top_k
-                    end = (task_id + 1) * self.e_prompt.top_k
+                    start = task_id * self.e_prompt_top_k
+                    end = (task_id + 1) * self.e_prompt_top_k
                     single_prompt_mask = torch.arange(start, end).to(x.device)
                     prompt_mask = single_prompt_mask.unsqueeze(0).expand(x.shape[0], -1)
-                    if end > self.e_prompt.pool_size:
+                    if end > self.e_prompt_pool_size:
                         prompt_mask = None
                 else:
                     prompt_mask = None
@@ -540,8 +570,12 @@ class VisionTransformer(nn.Module):
                 g_prompt_counter = -1
                 e_prompt_counter = -1
 
-                res = self.e_prompt(x, prompt_mask=prompt_mask, cls_features=cls_features)
-                e_prompt = res['batched_prompt']
+
+                if not self.e_prompt_use_prev_emb:
+                    res = self.e_prompt(x, prompt_mask=prompt_mask, cls_features=cls_features)
+                    e_prompt = res['batched_prompt']
+                else:
+                    res = dict()
 
                 for i, block in enumerate(self.blocks):
                     if i in self.g_prompt_layer_idx:
@@ -556,12 +590,20 @@ class VisionTransformer(nn.Module):
                     
                     elif i in self.e_prompt_layer_idx:
                         e_prompt_counter += 1
+
+                        if self.e_prompt_use_prev_emb:
+                            cls_features = self._unpatch_x(x, clone=True)
+                            this_e_prompt = self.e_prompts[e_prompt_counter](x, prompt_mask=prompt_mask, cls_features=cls_features)['batched_prompt'][0]
+                        else:
+                            this_e_prompt = e_prompt[e_prompt_counter]
+                        # this_e_prompt.shape should be [24, 2, 5, 12, 64] for default cifar100 setting
+
                         if self.use_prefix_tune_for_e_prompt:
                             # Prefix tunning, [B, 2, top_k * e_prompt_length, num_heads, embed_dim // num_heads]
-                            x = block(x, prompt=e_prompt[e_prompt_counter])
+                            x = block(x, prompt=this_e_prompt)
                         else:
                             # Pommpt tunning, [B, top_k * e_prompt_length, embed_dim]
-                            prompt = e_prompt[e_prompt_counter]
+                            prompt = this_e_prompt
                             x = torch.cat([prompt, x], dim=1)
                             x = block(x)
                     else:
@@ -575,24 +617,32 @@ class VisionTransformer(nn.Module):
         res['x'] = x
 
         return res
+    
+    def _unpatch_x(self, x, clone=False):
+        x_clone = x.clone() if clone else x
+
+        if self.class_token and self.head_type == 'token':
+            if self.prompt_pool:
+                x_clone = x_clone[:, self.total_prompt_len]
+            else:
+                x_clone = x_clone[:, 0]
+        elif self.head_type == 'gap' and self.global_pool == 'avg':
+            x_clone = x_clone.mean(dim=1)
+        elif self.head_type == 'prompt' and self.prompt_pool:
+            x_clone = x_clone[:, 1:(1 + self.total_prompt_len)] if self.class_token else x_clone[:, 0:self.total_prompt_len]
+            x_clone = x_clone.mean(dim=1)
+        elif self.head_type == 'token+prompt' and self.prompt_pool and self.class_token:
+            x_clone = x_clone[:, 0:self.total_prompt_len + 1]
+            x_clone = x_clone.mean(dim=1)
+        else:
+            raise ValueError(f'Invalid classifier={self.classifier}')
+        
+        return x_clone
 
     def forward_head(self, res, pre_logits: bool = False):
         x = res['x']
-        if self.class_token and self.head_type == 'token':
-            if self.prompt_pool:
-                x = x[:, self.total_prompt_len]
-            else:
-                x = x[:, 0]
-        elif self.head_type == 'gap' and self.global_pool == 'avg':
-            x = x.mean(dim=1)
-        elif self.head_type == 'prompt' and self.prompt_pool:
-            x = x[:, 1:(1 + self.total_prompt_len)] if self.class_token else x[:, 0:self.total_prompt_len]
-            x = x.mean(dim=1)
-        elif self.head_type == 'token+prompt' and self.prompt_pool and self.class_token:
-            x = x[:, 0:self.total_prompt_len + 1]
-            x = x.mean(dim=1)
-        else:
-            raise ValueError(f'Invalid classifier={self.classifier}')
+
+        x = self._unpatch_x(x, clone=False)
         
         res['pre_logits'] = x
 

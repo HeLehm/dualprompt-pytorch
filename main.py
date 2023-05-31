@@ -86,6 +86,7 @@ def main(args):
         e_prompt_layer_idx=args.e_prompt_layer_idx,
         use_prefix_tune_for_e_prompt=args.use_prefix_tune_for_e_prompt,
         same_key_value=args.same_key_value,
+        e_prompt_use_prev_emb=args.e_prompt_use_prev_emb,
     )
     original_model.to(device)
     model.to(device)  
