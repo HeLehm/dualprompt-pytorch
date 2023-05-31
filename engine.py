@@ -222,16 +222,32 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                     cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
                     prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
                     
+                    print(cur_idx, prev_idx)
+
                     # TODO: make this doamble with e_prompt_use_prev_emb
                     with torch.no_grad():
-                        if args.distributed:
-                            model.module.e_prompt.prompt.grad.zero_()
-                            model.module.e_prompt.prompt[cur_idx] = model.module.e_prompt.prompt[prev_idx]
-                            optimizer.param_groups[0]['params'] = model.module.parameters()
+                        if not args.e_prompt_use_prev_emb:
+                            if args.distributed:
+                                model.module.e_prompt.prompt.grad.zero_()
+                                model.module.e_prompt.prompt[cur_idx] = model.module.e_prompt.prompt[prev_idx]
+                                optimizer.param_groups[0]['params'] = model.module.parameters()
+                            else:
+                                model.e_prompt.prompt.grad.zero_()
+                                #prompt shape = (self.num_layers, 2, self.pool_size, self.length, 
+                                #        self.num_heads, embed_dim // self.num_heads)
+                                # -> torch.Size([3, 2, 10, 5, 12, 64])
+                                model.e_prompt.prompt[cur_idx] = model.e_prompt.prompt[prev_idx]
+                                optimizer.param_groups[0]['params'] = model.parameters()
                         else:
-                            model.e_prompt.prompt.grad.zero_()
-                            model.e_prompt.prompt[cur_idx] = model.e_prompt.prompt[prev_idx]
-                            optimizer.param_groups[0]['params'] = model.parameters()
+                            if args.distributed:
+                                raise NotImplementedError("Feel free to implement this")
+                            else:
+                                # TODO check if this is right
+                                for e_prompt in model.e_prompt:
+                                    e_prompt.prompt.grad.zero_()
+                                    e_prompt.prompt[cur_idx] = e_prompt.prompt[prev_idx]
+                                optimizer.param_groups[0]['params'] = model.parameters()
+                                raise NotImplementedError("TODO")
                     
         # Transfer previous learned prompt param keys to the new prompt
         if args.prompt_pool and args.shared_prompt_key:
