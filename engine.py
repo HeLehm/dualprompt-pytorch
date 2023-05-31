@@ -247,7 +247,6 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                                     e_prompt.prompt.grad.zero_()
                                     e_prompt.prompt[cur_idx] = e_prompt.prompt[prev_idx]
                                 optimizer.param_groups[0]['params'] = model.parameters()
-                                raise NotImplementedError("TODO")
                     
         # Transfer previous learned prompt param keys to the new prompt
         if args.prompt_pool and args.shared_prompt_key:
