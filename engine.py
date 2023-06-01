@@ -219,6 +219,8 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                 if (prev_end > args.size) or (cur_end > args.size):
                     pass
                 else:
+                    # prompt_pool_shape when prefix = (self.num_layers, 2, self.pool_size, self.length, 
+                    #                     self.num_heads, embed_dim // self.num_heads)
                     cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
                     prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
                     

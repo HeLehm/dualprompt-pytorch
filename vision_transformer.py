@@ -593,7 +593,13 @@ class VisionTransformer(nn.Module):
 
                         if self.e_prompt_use_prev_emb:
                             cls_features = self._unpatch_x(x, clone=True)
-                            this_e_prompt = self.e_prompts[e_prompt_counter](x, prompt_mask=prompt_mask, cls_features=cls_features)['batched_prompt'][0]
+                            this_e_prompt_res = self.e_prompts[e_prompt_counter](x, prompt_mask=prompt_mask, cls_features=cls_features)
+                            this_e_prompt = this_e_prompt_res['batched_prompt'][0]
+                            #accumulate reduce sim so prompt keys will be updated
+                            if 'reduce_sim' in res:
+                                res['reduce_sim'] += this_e_prompt_res['reduce_sim']
+                            else:
+                                res['reduce_sim'] = this_e_prompt_res['reduce_sim']
                         else:
                             this_e_prompt = e_prompt[e_prompt_counter]
                         # this_e_prompt.shape should be [24, 2, 5, 12, 64] for default cifar100 setting

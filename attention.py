@@ -27,6 +27,7 @@ class PreT_Attention(nn.Module):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
+        # q, k, v shapes each : B, num_heads, N, embed_dim // num_heads
 
         if prompt is not None:
             # prefix key, value
