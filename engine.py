@@ -154,9 +154,11 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
 
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))
 
-            target_e_task = torch.ones_like(target) * task_id
+            target_e_task = torch.ones_like(predicted_e_task) * task_id
             # NOTE: only works with top_k=1
-            acc1_e_task = torch.sum(predicted_e_task.squeeze() == target_e_task).item() / target.shape[0]
+            acce = predicted_e_task == target_e_task
+            acce_sum = float(torch.sum(acce).item())
+            acc1_e_task = acce_sum / float(target.shape[0])
 
             metric_logger.meters['Loss'].update(loss.item())
             metric_logger.meters['Acc@1'].update(acc1.item(), n=input.shape[0])
