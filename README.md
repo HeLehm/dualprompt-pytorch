@@ -5,6 +5,16 @@ Wang, Zifeng, et al. "DualPrompt: Complementary Prompting for Rehearsal-free Con
 
 The official Jax implementation is <a href="https://github.com/google-research/l2p">here</a>.
 
+## Idea in this branch
+
+dont just use teh top k for e prompt, do interpolation
+-> even if missclassified still chance for right result
+-> maybe train with noise to make robust even for first tasks
+
+### Todos
+- [x] add metric to messure e prompt task acc (called Acc@1_e_task)
+
+
 ## Environment
 The system I used and tested in
 - Ubuntu 20.04.4 LTS
