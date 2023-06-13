@@ -138,7 +138,8 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
             else:
                 cls_features = None
             
-            output = model(input, task_id=task_id, cls_features=cls_features)
+            
+            output = model(input, task_id=task_id, cls_features=cls_features, train=False)
             logits = output['logits']
 
             if args.task_inc and class_mask is not None:
@@ -153,9 +154,17 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
 
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))
 
+            predicted_e_task = output['prompt_idx']
+            target_e_task = torch.ones_like(predicted_e_task) * task_id
+            # NOTE: only works with top_k=1
+            acce = predicted_e_task == target_e_task
+            acce_sum = float(torch.sum(acce).item())
+            acc1_e_task = acce_sum / float(target.shape[0])
+
             metric_logger.meters['Loss'].update(loss.item())
             metric_logger.meters['Acc@1'].update(acc1.item(), n=input.shape[0])
             metric_logger.meters['Acc@5'].update(acc5.item(), n=input.shape[0])
+            metric_logger.meters['Acc@1_e_task'].update(acc1_e_task, n=input.shape[0])
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
