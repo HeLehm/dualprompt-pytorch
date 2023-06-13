@@ -141,6 +141,31 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
             
             output = model(input, task_id=task_id, cls_features=cls_features, train=False)
             logits = output['logits']
+            predicted_task = output['prompt_idx']
+            
+            # let's assume the following values
+            batch_size = logits.shape[0]
+            num_classes = logits.shape[1]
+            num_tasks = args.num_tasks
+            classes_per_task = args.nb_classes // args.num_tasks
+
+            # make sure predicted_task is long tensor and has shape [batch]
+            if len(predicted_task.shape) > 1:
+                predicted_task = predicted_task.squeeze(-1)
+            assert predicted_task.shape == (batch_size, )
+
+            # construct a mask with the same shape as logits
+            mask = torch.zeros_like(logits)
+
+            # calculate the range of classes for each predicted task in the batch
+            for b in range(batch_size):
+                task_start = predicted_task[b] * classes_per_task
+                task_end = (predicted_task[b] + 1) * classes_per_task
+                mask[b, task_start:task_end] = 1
+
+            # apply the mask to logits
+            logits = logits * mask
+
 
             if args.task_inc and class_mask is not None:
                 #adding mask to output logits
@@ -154,10 +179,10 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
 
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))
 
-            predicted_e_task = output['prompt_idx']
-            target_e_task = torch.ones_like(predicted_e_task) * task_id
+            
+            target_e_task = torch.ones_like(predicted_task) * task_id
             # NOTE: only works with top_k=1
-            acce = predicted_e_task == target_e_task
+            acce = predicted_task == target_e_task
             acce_sum = float(torch.sum(acce).item())
             acc1_e_task = acce_sum / float(target.shape[0])
 
