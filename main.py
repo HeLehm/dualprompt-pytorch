@@ -35,7 +35,11 @@ def main(args):
     utils.init_distributed_mode(args)
 
     if args.wandb:
-        wandb.init(project='dualprompt', config=args)
+        if args.wand_name is not None:
+            wandb.init(project='dualprompt', name=args.wand_name, config=args)
+        else:
+            wandb.init(project='dualprompt', config=args)
+
 
     device = torch.device(args.device)
 
@@ -166,6 +170,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('DualPrompt training and evaluation configs')
 
     parser.add_argument('--wandb', action='store_true', help='use wandb')
+    parser.add_argument('--wandb_name', type=str, default=None, help='wandb run name')
     
     config = parser.parse_known_args()[-1][0]
 
