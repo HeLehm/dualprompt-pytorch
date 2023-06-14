@@ -131,4 +131,4 @@ def get_args_parser(subparsers):
 
     # mask logits based on e prompt
     subparsers.add_argument('--eval_hard_mask', default=False, type=bool, help='if mask logits based on e prompt task prediction (only use top1)')
-    subparsers.add_argument('--eval_soft_mask', default=False, type=float, help='if mask logits based on e prompt task prediction (use similarities)')
+    subparsers.add_argument('--eval_soft_mask', default=False, type=bool, help='if mask logits based on e prompt task prediction (use similarities)')
