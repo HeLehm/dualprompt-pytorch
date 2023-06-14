@@ -182,7 +182,7 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
                 normalized_similarity = normalized_similarity.view(normalized_similarity.shape[0], normalized_similarity.shape[1], -1)
 
                 # Repeat each element 10 times along the second dimension (columns)
-                normalized_similarity = normalized_similarity.repeat(1, 1, 10)
+                normalized_similarity = normalized_similarity.repeat(1, 1, classes_per_task)
 
                 # Remove the added dimension
                 normalized_similarity = normalized_similarity.view(batch_size, -1)
