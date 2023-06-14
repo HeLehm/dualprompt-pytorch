@@ -141,11 +141,10 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
             
             output = model(input, task_id=task_id, cls_features=cls_features, train=False)
             logits = output['logits']
+            predicted_task = output['prompt_idx']
 
 
-            if args.eval_hard_mask:
-                predicted_task = output['prompt_idx']
-            
+            if args.eval_hard_mask:    
                 # let's assume the following values
                 batch_size = logits.shape[0]
                 classes_per_task = args.nb_classes // args.num_tasks
@@ -180,7 +179,7 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
                 normalized_similarity = F.softmax(similarity, dim=-1)
 
                 # Expand dimensions of normalized_similarity to match shape of logits
-                normalized_similarity = normalized_similarity.unsqueeze(1).expand_as(normalized_logits)
+                normalized_similarity = normalized_similarity.view(batch_size, -1, 1).repeat(1, 1, 10).view(batch_size, -1)
 
                 # Apply the soft mask to normalized_logits
                 logits = normalized_logits * normalized_similarity
