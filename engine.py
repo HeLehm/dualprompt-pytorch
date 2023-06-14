@@ -141,30 +141,49 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
             
             output = model(input, task_id=task_id, cls_features=cls_features, train=False)
             logits = output['logits']
-            predicted_task = output['prompt_idx']
+
+
+            if args.eval_hard_mask:
+                predicted_task = output['prompt_idx']
             
-            # let's assume the following values
-            batch_size = logits.shape[0]
-            num_classes = logits.shape[1]
-            num_tasks = args.num_tasks
-            classes_per_task = args.nb_classes // args.num_tasks
+                # let's assume the following values
+                batch_size = logits.shape[0]
+                classes_per_task = args.nb_classes // args.num_tasks
 
-            # make sure predicted_task is long tensor and has shape [batch]
-            if len(predicted_task.shape) > 1:
-                predicted_task = predicted_task.squeeze(-1)
-            assert predicted_task.shape == (batch_size, )
+                # make sure predicted_task is long tensor and has shape [batch]
+                if len(predicted_task.shape) > 1:
+                    predicted_task = predicted_task.squeeze(-1)
+                assert predicted_task.shape == (batch_size, )
 
-            # construct a mask with the same shape as logits
-            mask = torch.zeros_like(logits)
+                # construct a mask with the same shape as logits
+                mask = torch.zeros_like(logits)
 
-            # calculate the range of classes for each predicted task in the batch
-            for b in range(batch_size):
-                task_start = predicted_task[b] * classes_per_task
-                task_end = (predicted_task[b] + 1) * classes_per_task
-                mask[b, task_start:task_end] = 1
+                # calculate the range of classes for each predicted task in the batch
+                for b in range(batch_size):
+                    task_start = predicted_task[b] * classes_per_task
+                    task_end = (predicted_task[b] + 1) * classes_per_task
+                    mask[b, task_start:task_end] = 1
 
-            # apply the mask to logits
-            logits = logits * mask
+                # apply the mask to logits
+                logits = logits * mask
+            
+            elif args.eval_soft_mask:
+                similarity = output['similarity']
+
+                # let's assume the following values
+                batch_size = logits.shape[0]
+
+                # Normalize logits to range from 0 to 1 for each batch
+                normalized_logits = F.softmax(logits, dim=-1)
+
+                # Normalize similarity scores to range from 0 to 1 for each batch
+                normalized_similarity = F.softmax(similarity, dim=-1)
+
+                # Expand dimensions of normalized_similarity to match shape of logits
+                normalized_similarity = normalized_similarity.unsqueeze(1).expand_as(normalized_logits)
+
+                # Apply the soft mask to normalized_logits
+                logits = normalized_logits * normalized_similarity
 
 
             if args.task_inc and class_mask is not None:
