@@ -1,7 +1,7 @@
 import argparse
 
 def get_args_parser(subparsers):
-    subparsers.add_argument('--batch-size', default=24, type=int, help='Batch size per device')
+    subparsers.add_argument('--batch-size', default=128, type=int, help='Batch size per device')
     subparsers.add_argument('--epochs', default=5, type=int)
 
     # Model parameters
@@ -22,7 +22,7 @@ def get_args_parser(subparsers):
 
     # Learning rate schedule parameters
     subparsers.add_argument('--sched', default='constant', type=str, metavar='SCHEDULER', help='LR scheduler (default: "constant"')
-    subparsers.add_argument('--lr', type=float, default=0.03, metavar='LR', help='learning rate (default: 0.03)')
+    subparsers.add_argument('--lr', type=float, default=0.005, metavar='LR', help='learning rate (default: 0.03)')
     subparsers.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct', help='learning rate noise on/off epoch percentages')
     subparsers.add_argument('--lr-noise-pct', type=float, default=0.67, metavar='PERCENT', help='learning rate noise limit percent (default: 0.67)')
     subparsers.add_argument('--lr-noise-std', type=float, default=1.0, metavar='STDDEV', help='learning rate noise std-dev (default: 1.0)')
