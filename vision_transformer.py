@@ -338,8 +338,7 @@ class VisionTransformer(nn.Module):
             prompt_length=None, embedding_key='cls', prompt_init='uniform', prompt_pool=False, prompt_key=False, pool_size=None,
             top_k=None, batchwise_prompt=False, prompt_key_init='uniform', head_type='token', use_prompt_mask=False,
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
-            use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
-            use_learnable_mask=False,):
+            use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,):
         """
         Args:
             img_size (int, tuple): input image size
@@ -364,7 +363,6 @@ class VisionTransformer(nn.Module):
             act_layer: (nn.Module): MLP activation layer
             block_fn: (nn.Module): transformer block
             prompt_pool (bool): use prompt pool or not
-            use_learnable_mask (bool): use learnable masks for g and e prompt or not
         """
         super().__init__()
         assert global_pool in ('', 'avg', 'token')
@@ -381,7 +379,6 @@ class VisionTransformer(nn.Module):
         self.num_prefix_tokens = 1 if class_token else 0
         self.no_embed_class = no_embed_class
         self.grad_checkpointing = False
-        self.use_learnable_mask = use_learnable_mask
 
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
@@ -400,13 +397,12 @@ class VisionTransformer(nn.Module):
         self.g_prompt_layer_idx = g_prompt_layer_idx
         # num_g_prompt : The actual number of layers to which g-prompt is attached.
         # In official code, create as many layers as the total number of layers and select them based on the index
-        # if we use learnable mask, we init one prompt for each head (same for e prompt)
-        num_g_prompt = num_heads if self.use_learnable_mask else (len(self.g_prompt_layer_idx) if self.g_prompt_layer_idx is not None else 0)
+        num_g_prompt = len(self.g_prompt_layer_idx) if self.g_prompt_layer_idx is not None else 0
         self.use_prefix_tune_for_g_prompt = use_prefix_tune_for_g_prompt
         
         self.use_e_prompt = use_e_prompt
         self.e_prompt_layer_idx = e_prompt_layer_idx
-        num_e_prompt = num_heads if self.use_learnable_mask else (len(self.e_prompt_layer_idx) if self.e_prompt_layer_idx is not None else 0)
+        num_e_prompt = len(self.e_prompt_layer_idx) if self.e_prompt_layer_idx is not None else 0
         self.use_prefix_tune_for_e_prompt = use_prefix_tune_for_e_prompt
         
         if not self.use_prefix_tune_for_g_prompt and not self.use_prefix_tune_for_g_prompt:
@@ -474,21 +470,6 @@ class VisionTransformer(nn.Module):
         self.fc_norm = norm_layer(embed_dim) if use_fc_norm else nn.Identity()
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-        # mask aproach instead of idx
-        if self.use_learnable_mask:
-            self.g_mask = torch.zeros((num_heads), dtype=torch.float32)
-            for i in range(num_heads):
-                if i in self.g_prompt_layer_idx:
-                    self.g_mask[i] = 1
-            self.e_mask = torch.zeros((num_heads), dtype=torch.float32)
-            for i in range(num_heads):
-                if i in self.e_prompt_layer_idx:
-                    self.e_mask[i] = 1
-
-            # make params
-            self.g_mask = nn.Parameter(self.g_mask, requires_grad=True)
-            self.e_mask = nn.Parameter(self.e_mask, requires_grad=True)
-
         if weight_init != 'skip':
             self.init_weights(weight_init)
 
@@ -555,71 +536,36 @@ class VisionTransformer(nn.Module):
                         prompt_mask = None
                 else:
                     prompt_mask = None
+                
+                g_prompt_counter = -1
+                e_prompt_counter = -1
 
                 res = self.e_prompt(x, prompt_mask=prompt_mask, cls_features=cls_features)
                 e_prompt = res['batched_prompt']
 
-                #NewCode Start
-
-                g_prompt_counter = -1
-                e_prompt_counter = -1
-
-                if self.use_learnable_mask:
-                    # use the mask code
-
-                    for i, block in enumerate(self.blocks):
-                    
-                        g_mask = self.g_mask[i]
-                        e_mask = self.e_mask[i]
-
-
-                        g_mask = F.sigmoid(g_mask)
-                        e_mask = F.sigmoid(e_mask)
-
-
-                        # get batch gprompt
-                        idx = torch.tensor([i] * x.shape[0]).to(x.device)
-                        block_g_prompt = self.g_prompt[
-                            idx
-                        ]
-
-                        #get_batch eprompt
-                        block_e_prompt = e_prompt[
-                            i
-                        ]
-                    
-                        prompt = g_mask * block_g_prompt + e_mask * block_e_prompt
-                        
-                        x = block(x, prompt=prompt)
-
-                else:
-                    # use the regular code
-                    for i, block in enumerate(self.blocks):
-
-                        if i in self.g_prompt_layer_idx:
-                            if self.use_prefix_tune_for_g_prompt:
-                                g_prompt_counter += 1
-                                # Prefix tunning, [B, 2, g_prompt_length, num_heads, embed_dim // num_heads]
-                                # idx shape : size 24 (B)
-                                idx = torch.tensor([g_prompt_counter] * x.shape[0]).to(x.device)
-                                g_prompt = self.g_prompt[idx]
-                            else:
-                                g_prompt=None
-                            x = block(x, prompt=g_prompt)
-                    
-                        elif i in self.e_prompt_layer_idx:
-                            e_prompt_counter += 1
-                            if self.use_prefix_tune_for_e_prompt:
-                                # Prefix tunning, [B, 2, top_k * e_prompt_length, num_heads, embed_dim // num_heads]
-                                x = block(x, prompt=e_prompt[e_prompt_counter])
-                            else:
-                                # Pommpt tunning, [B, top_k * e_prompt_length, embed_dim]
-                                prompt = e_prompt[e_prompt_counter]
-                                x = torch.cat([prompt, x], dim=1)
-                                x = block(x)
+                for i, block in enumerate(self.blocks):
+                    if i in self.g_prompt_layer_idx:
+                        if self.use_prefix_tune_for_g_prompt:
+                            g_prompt_counter += 1
+                            # Prefix tunning, [B, 2, g_prompt_length, num_heads, embed_dim // num_heads]
+                            idx = torch.tensor([g_prompt_counter] * x.shape[0]).to(x.device)
+                            g_prompt = self.g_prompt[idx]
                         else:
+                            g_prompt=None
+                        x = block(x, prompt=g_prompt)
+                    
+                    elif i in self.e_prompt_layer_idx:
+                        e_prompt_counter += 1
+                        if self.use_prefix_tune_for_e_prompt:
+                            # Prefix tunning, [B, 2, top_k * e_prompt_length, num_heads, embed_dim // num_heads]
+                            x = block(x, prompt=e_prompt[e_prompt_counter])
+                        else:
+                            # Pommpt tunning, [B, top_k * e_prompt_length, embed_dim]
+                            prompt = e_prompt[e_prompt_counter]
+                            x = torch.cat([prompt, x], dim=1)
                             x = block(x)
-                
+                    else:
+                        x = block(x)
             else:
                 x = self.blocks(x)
                 
