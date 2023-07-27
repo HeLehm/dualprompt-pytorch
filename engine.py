@@ -263,6 +263,13 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                         model.e_prompt.prompt_key.grad.zero_()
                         model.e_prompt.prompt_key[cur_idx] = model.e_prompt.prompt_key[prev_idx]
                         optimizer.param_groups[0]['params'] = model.parameters()
+        if hasattr(model, 'e_prompt'):
+            model.e_prompt.before_task(
+                task_id=task_id,
+                original_model=original_model,
+                data_loader=data_loader[task_id]['train'],
+                args=args,
+            )
      
         # Create new optimizer for each task to clear optimizer status
         if task_id > 0 and args.reinit_optimizer:

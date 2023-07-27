@@ -6,40 +6,40 @@ class BatchSymmetricPositiveDefiniteMatrix(nn.Module):
     """
     Stored a batch of symmetric positive definite matrices
     """
-    def __init__(self,batch_size, n, jitter = 1e-6 ,*args, **kwargs) -> None:
+    def __init__(self,batch_size, n, jitter = 1e-6, requires_grad=False ,*args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.n = n
         self.batch_size = batch_size
         self.jitter_value = jitter
         self.jitter = nn.Parameter(jitter * torch.eye(self.n).expand(self.batch_size, self.n, self.n), requires_grad=False)
         self.tril = nn.Parameter(
-            torch.randn(batch_size, n * (n + 1) // 2)
+            torch.randn(batch_size, n * (n + 1) // 2),
+            requires_grad=requires_grad
         )
+        self._init_helper()
+
+    def _init_helper(self):
+        """
+        makes sure random tril is pos def sym
+        """
+        L = torch.zeros(self.batch_size, self.n, self.n)
+        L.diagonal(dim1=-2, dim2=-1).uniform_(0.1, 1.0)
+        self.set_matrix(L)
+        
+
 
     def set_matrix_at(self, matrix, i):
         """
         Set the matrix for a ceratin batch index
         """
-        matrix = matrix.to(self.tril.device)
-        # check if matri is square
-        assert matrix.shape[-1] == matrix.shape[-2], f"Expected matrix to be square"
-        # check if shape is correct
-        assert matrix.shape[-1] == self.n, f"Expected matrix to have shape (batch_size, {self.n}, {self.n}), got {matrix.shape}"
-        # check if matrix is symmetric
-        assert torch.allclose(matrix, matrix.transpose(-1, -2)), f"Expected matrix to be symmetric"
-        # check if matrix is positive definite
-        if not torch.all(torch.linalg.eigvalsh(matrix) > 0):
-            warnings.warn("Matrix is not positive definite, adding jitter to diagonal")
-            matrix = matrix + torch.eye(self.n).to(matrix.device) * self.jitter_value
-        
-        # set the matrix
-        # use cholesky decomposition, so tril @ tril.transpose(-2, -1) will be the matrix
-        matrix = torch.linalg.cholesky(matrix)
+        new_matrix = matrix.to(self.tril.device)
 
-        new_trill_data = self._matrix_to_tril(matrix)
+        matrix = self()
 
-        # set the right index
-        self.tril.data[i] = new_trill_data
+        matrix[i] = new_matrix
+
+        self.set_matrix(matrix)
+
 
     
     def set_matrix(self, matrix):

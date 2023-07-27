@@ -6,6 +6,7 @@
 # Added code for dualprompt implementation
 # -- Jaeho Lee, dlwogh9344@khu.ac.kr
 # ------------------------------------------
+import os
 import sys
 import argparse
 import datetime
@@ -30,6 +31,7 @@ import wandb
 
 import warnings
 warnings.filterwarnings('ignore', 'Argument interpolation should be of type InterpolationMode instead of int')
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 def main(args):
     utils.init_distributed_mode(args)

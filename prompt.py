@@ -1,5 +1,12 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+from matrix import BatchSymmetricPositiveDefiniteMatrix
+from torch.distributions.multivariate_normal import _batch_mahalanobis, _batch_mv
+import math
+
+from tqdm import tqdm
 
 class EPrompt(nn.Module):
     def __init__(self, length=5, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
@@ -172,58 +179,187 @@ class EPrompt(nn.Module):
         
         out['batched_prompt'] = batched_prompt
 
+    
+    def before_task(self, *args, **kwargs):
+        pass
+
+
+def calc_cov(x, jitter=1e-4, mean = None):
+    """
+    Compute covariance matrix of the input x.
+    """
+    if mean is None:
+        mean = x.mean(dim=0, keepdim=True)
+    x = x - mean
+    fact = 1.0 / (x.shape[0] - 1)
+    cov = fact * x.t().mm(x)
+    return cov + jitter * torch.eye(x.shape[1], device=x.device)
+
+class MVNEPrompt(nn.Module):
+    """
+    Mulativariet normal E-Prompt
+    """
+    def __init__(self, length=5, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+                 prompt_key=False, pool_size=None, top_k=None, batchwise_prompt=False, prompt_key_init='uniform',
+                 num_layers=1, use_prefix_tune_for_e_prompt=False, num_heads=-1, same_key_value=False,):
+        super().__init__()
+
+        self.length = length
+        self.prompt_pool = prompt_pool
+        self.embedding_key = embedding_key
+        self.prompt_init = prompt_init
+        self.prompt_key = prompt_key
+        self.pool_size = pool_size
+        self.top_k = top_k
+        self.batchwise_prompt = batchwise_prompt
+        self.num_layers = num_layers
+        self.use_prefix_tune_for_e_prompt = use_prefix_tune_for_e_prompt
+        self.num_heads = num_heads
+        self.same_key_value = same_key_value
+
+        if self.prompt_pool:
+            # user prefix style
+            if self.use_prefix_tune_for_e_prompt:
+                assert embed_dim % self.num_heads == 0
+                if self.same_key_value:
+                    prompt_pool_shape = (self.num_layers, 1, self.pool_size, self.length, 
+                                        self.num_heads, embed_dim // self.num_heads)
+
+                    if prompt_init == 'zero':
+                        self.prompt = nn.Parameter(torch.zeros(prompt_pool_shape))
+                    elif prompt_init == 'uniform':
+                        self.prompt = nn.Parameter(torch.randn(prompt_pool_shape))
+                        nn.init.uniform_(self.prompt, -1, 1)
+                    self.prompt = self.prompt.repeat(1, 2, 1, 1, 1, 1)
+                else:
+                    prompt_pool_shape = (self.num_layers, 2, self.pool_size, self.length, 
+                                        self.num_heads, embed_dim // self.num_heads)
+                    if prompt_init == 'zero':
+                        self.prompt = nn.Parameter(torch.zeros(prompt_pool_shape))
+                    elif prompt_init == 'uniform':
+                        self.prompt = nn.Parameter(torch.randn(prompt_pool_shape)) # num_layers, 2, pool_size, length, num_heads, embed_dim // num_heads
+                        nn.init.uniform_(self.prompt, -1, 1)
+            else:
+                prompt_pool_shape=(self.num_layers, self.pool_size, self.length, embed_dim)
+                if prompt_init == 'zero':
+                    self.prompt = nn.Parameter(torch.zeros(prompt_pool_shape))
+                elif prompt_init == 'uniform':
+                    self.prompt = nn.Parameter(torch.randn(prompt_pool_shape))
+                    nn.init.uniform_(self.prompt, -1, 1)
+        else:
+            raise NotImplementedError("Not supported way of calculating embedding keys!")
+
+        if not prompt_key:
+            raise NotImplementedError("Need key for MVN E-Prompt")
+
+        # init mvn variables to be used in forward
+        mean_key_shape = (pool_size, embed_dim)
+        # dont update mean and cov using grad desc
+        self.mvn_mean = nn.Parameter(torch.randn(mean_key_shape), requires_grad=False)
+        self.mvn_cov = BatchSymmetricPositiveDefiniteMatrix(pool_size, embed_dim, jitter=1e-6, requires_grad=False)
+
+    def before_task(self, task_id, original_model, data_loader, args):
+        print("MVN before task")
+
+        # store embeddings
+        embeddings = []
+
+        for input, target in tqdm(data_loader, desc="[MVN E-Prompt]Embedding data"):
+            input = input.to(args.device)
+            target = target.to(args.device)
+
+            with torch.no_grad():
+                # get embeddings
+                output = original_model(input)
+                embeddings.append(output['pre_logits'])
+            
+        embeddings = torch.cat(embeddings, dim=0) # N, C
+        # calculate mean
+        self.mvn_mean.data[task_id] = torch.mean(embeddings, dim=0)
+        # calculate covariance
+        cov = calc_cov(embeddings, mean=self.mvn_mean[task_id])
+        self.mvn_cov.set_matrix_at(cov, task_id)
+
+
+    def forward(self, x_embed, prompt_mask=None, cls_features=None):
+        out = dict()
+        
+        if self.embedding_key == 'mean':
+            x_embed_mean = torch.mean(x_embed, dim=1)
+        elif self.embedding_key == 'max':
+            x_embed_mean = torch.max(x_embed, dim=1)[0]
+        elif self.embedding_key == 'mean_max':
+            x_embed_mean = torch.max(x_embed, dim=1)[0] + 2 * torch.mean(x_embed, dim=1)
+        elif self.embedding_key == 'cls':
+            if cls_features is None:
+                x_embed_mean = torch.max(x_embed, dim=1)[0] # B, C
+            else:
+                x_embed_mean = cls_features
+        else:
+            raise NotImplementedError("Not supported way of calculating embedding keys!")
+        
+        # dont forward through mvn_mean and mvn_cov during training
+        if prompt_mask is not None:
+            idx = prompt_mask # B, top_k
+        else:
+            # assuming this is eval mode
+            similarity = self._predict(x_embed_mean)
+
+            (similarity_top_k, idx) = torch.topk(similarity, k=self.top_k, dim=1) # B, top_k
+            out['similarity'] = similarity
+
+            if self.batchwise_prompt:
+                prompt_id, id_counts = torch.unique(idx, return_counts=True, sorted=True)
+                # In jnp.unique, when the 'size' is specified and there are fewer than the indicated number of elements,
+                # the remaining elements will be filled with 'fill_value', the default is the minimum value along the specified dimension.
+                # Unless dimension is specified, this will be flattend if it is not already 1D.
+                if prompt_id.shape[0] < self.pool_size:
+                    prompt_id = torch.cat([prompt_id, torch.full((self.pool_size - prompt_id.shape[0],), torch.min(idx.flatten()), device=prompt_id.device)])
+                    id_counts = torch.cat([id_counts, torch.full((self.pool_size - id_counts.shape[0],), 0, device=id_counts.device)])
+                _, major_idx = torch.topk(id_counts, k=self.top_k) # top_k
+                major_prompt_id = prompt_id[major_idx] # top_k
+                # expand to batch
+                idx = major_prompt_id.expand(x_embed.shape[0], -1).contiguous() # B, top_k
+
+        out['prompt_idx'] = idx
+        if self.use_prefix_tune_for_e_prompt:
+            batched_prompt_raw = self.prompt[:,:,idx]  # num_layers, B, top_k, length, C
+            num_layers, dual, batch_size, top_k, length, num_heads, heads_embed_dim = batched_prompt_raw.shape
+            batched_prompt = batched_prompt_raw.reshape(
+                num_layers, batch_size, dual, top_k * length, num_heads, heads_embed_dim
+            )
+        else:
+            batched_prompt_raw = self.prompt[:,idx]
+            num_layers, batch_size, top_k, length, embed_dim = batched_prompt_raw.shape
+            batched_prompt = batched_prompt_raw.reshape(
+                num_layers, batch_size, top_k * length, embed_dim
+            )
+
+        out['batched_prompt'] = batched_prompt
+
         return out
     
-    def before_task_train(self, task_id, dataloader, args):
+    def _predict(self, x):
         """
-        transfer previously prompt key and value for new task
-        Has previously been done in engine.py
+        predict using mvn pdf
+        x.shape : bacth, emb_dim
         """
-        self._transfer_prev_prompt(task_id, args)
-        self._transfer_prev_key(task_id, args)
-        
-    def _transfer_prev_prompt(self, task_id, args):
-        """
-        # Transfer previous learned prompt param to the new prompt
-        Has previously been done in engine.py
-        """
-        if not (args.prompt_pool and args.shared_prompt_pool): return
-        if not (task_id > 0): return
 
-        prev_start = (task_id - 1) * args.top_k
-        prev_end = task_id * args.top_k
+        #self.mvn_mean shape C, emb_dim
+        #but is emb_dim
 
-        cur_start = prev_end
-        cur_end = (task_id + 1) * args.top_k
+        # diff shape B, C, emb_dim
+        diff = x.unsqueeze(1) - self.mvn_mean.unsqueeze(0)
 
-        if (prev_end > args.size) or (cur_end > args.size): return
+        # _unbroadcasted_scale_tril shape C, emb_dim, emb_dim
+        _unbroadcasted_scale_tril = torch.linalg.cholesky(self.mvn_cov())
 
-        cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
-        prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
+        # M shape B, C
+        M = _batch_mahalanobis(_unbroadcasted_scale_tril, diff)
 
-        with torch.no_grad():
-            self.prompt.grad.zero_()
-            self.prompt[cur_idx] = self.prompt[prev_idx]
+        half_log_det = _unbroadcasted_scale_tril.diagonal(dim1=-2, dim2=-1).log().sum(-1)
+        result =  -0.5 * (x.shape[-1] * math.log(2 * math.pi) + M) - half_log_det
 
-    def _transfer_prev_key(self, task_id, args):
-        """
-        # Transfer previous learned prompt param keys to the new prompt
-        Has previously been done in engine.py
-        """
-        if not (args.prompt_pool and args.shared_prompt_key): return
-        if not (task_id > 0): return
+        result = F.softmax(result, dim=-1)
 
-        prev_start = (task_id - 1) * args.top_k
-        prev_end = task_id * args.top_k
-
-        cur_start = prev_end
-        cur_end = (task_id + 1) * args.top_k
-
-        if (prev_end > args.size) or (cur_end > args.size): return
-
-        cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
-        prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
-
-        self.prompt.grad.zero_()
-        self.prompt[cur_idx] = self.prompt[prev_idx]
-
+        return result

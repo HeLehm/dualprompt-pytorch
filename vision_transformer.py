@@ -40,7 +40,7 @@ from timm.models.helpers import build_model_with_cfg, resolve_pretrained_cfg, na
 from timm.models.layers import PatchEmbed, Mlp, DropPath, trunc_normal_, lecun_normal_
 from timm.models.registry import register_model
 
-from prompt import EPrompt
+from prompt import EPrompt, MVNEPrompt
 from attention import PreT_Attention
 
 _logger = logging.getLogger(__name__)
@@ -439,9 +439,12 @@ class VisionTransformer(nn.Module):
         
         if use_e_prompt and e_prompt_layer_idx is not None:
             if use_mvn:
-                # TODO Implement MVN
-                raise NotImplementedError
-            self.e_prompt = EPrompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
+                self.e_prompt = MVNEPrompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
+                    prompt_pool=prompt_pool, prompt_key=prompt_key, pool_size=pool_size, top_k=top_k, batchwise_prompt=batchwise_prompt,
+                    prompt_key_init=prompt_key_init, num_layers=num_e_prompt, use_prefix_tune_for_e_prompt=use_prefix_tune_for_e_prompt,
+                    num_heads=num_heads, same_key_value=same_key_value)
+            else:
+                self.e_prompt = EPrompt(length=prompt_length, embed_dim=embed_dim, embedding_key=embedding_key, prompt_init=prompt_init,
                     prompt_pool=prompt_pool, prompt_key=prompt_key, pool_size=pool_size, top_k=top_k, batchwise_prompt=batchwise_prompt,
                     prompt_key_init=prompt_key_init, num_layers=num_e_prompt, use_prefix_tune_for_e_prompt=use_prefix_tune_for_e_prompt,
                     num_heads=num_heads, same_key_value=same_key_value)
