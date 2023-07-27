@@ -210,6 +210,8 @@ def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, d
             }
         wandb.log(to_log)
 
+    test_stats["AA@1"] = avg_stat[0]
+
     return test_stats
 
 def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Module, original_model: torch.nn.Module, 
@@ -324,3 +326,5 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
         if args.output_dir and utils.is_main_process():
             with open(os.path.join(args.output_dir, '{}_stats.txt'.format(datetime.datetime.now().strftime('log_%Y_%m_%d_%H_%M'))), 'a') as f:
                 f.write(json.dumps(log_stats) + '\n')
+
+        return test_stats["AA@1"]

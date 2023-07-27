@@ -1,7 +1,7 @@
 import argparse
 
 def get_args_parser(subparsers):
-    subparsers.add_argument('--batch-size', default=24, type=int, help='Batch size per device')
+    subparsers.add_argument('--batch-size', default=48, type=int, help='Batch size per device')
     subparsers.add_argument('--epochs', default=5, type=int)
 
     # Model parameters
@@ -114,3 +114,6 @@ def get_args_parser(subparsers):
 
     # MVN parameters
     subparsers.add_argument('--use_mvn', default=False, type=bool, help='if using multivariate normal to query the prompt')
+
+    # print stuff
+    subparsers.add_argument('--silent', default=False, type=bool, help='if printing anything')

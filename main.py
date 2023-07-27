@@ -33,6 +33,22 @@ import warnings
 warnings.filterwarnings('ignore', 'Argument interpolation should be of type InterpolationMode instead of int')
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+def silence_stdout_stderr():
+    null_fd = os.open(os.devnull, os.O_RDWR)
+    save_stdout = os.dup(1)
+    save_stderr = os.dup(2)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.dup2(null_fd, 1)
+    os.dup2(null_fd, 2)
+    os.close(null_fd)
+    return (save_stdout, save_stderr)
+
+def restore_stdout_stderr(saved_fds):
+    save_stdout, save_stderr = saved_fds
+    os.dup2(save_stdout, 1)
+    os.dup2(save_stderr, 2)
+
 def main(args):
     utils.init_distributed_mode(args)
 
@@ -148,13 +164,16 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
 
-    train_and_evaluate(model, model_without_ddp, original_model,
+    aa1 = train_and_evaluate(model, model_without_ddp, original_model,
                     criterion, data_loader, optimizer, lr_scheduler,
                     device, class_mask, args)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f"Total training time: {total_time_str}")
+
+    # return aa@1
+    return aa1
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('DualPrompt training and evaluation configs')
@@ -177,10 +196,18 @@ if __name__ == '__main__':
     get_args_parser(config_parser)
 
     args = parser.parse_args()
+
+    if args.silent:
+        save = silence_stdout_stderr()
     
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
-    main(args)
+    res = main(args)
+
+    if args.silent:
+        restore_stdout_stderr(save)
+
+    print(res)
     
     sys.exit(0)
