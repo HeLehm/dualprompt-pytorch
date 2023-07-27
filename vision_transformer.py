@@ -606,6 +606,10 @@ class VisionTransformer(nn.Module):
         res = self.forward_features(x, task_id=task_id, cls_features=cls_features, train=train)
         res = self.forward_head(res)
         return res
+    
+    def before_task_train(self, task_id, dataloader, args):
+        if args.use_e_prompt:
+            self.e_prompt.before_task_train(task_id, dataloader, args)
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ''):

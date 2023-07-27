@@ -173,3 +173,57 @@ class EPrompt(nn.Module):
         out['batched_prompt'] = batched_prompt
 
         return out
+    
+    def before_task_train(self, task_id, dataloader, args):
+        """
+        transfer previously prompt key and value for new task
+        Has previously been done in engine.py
+        """
+        self._transfer_prev_prompt(task_id, args)
+        self._transfer_prev_key(task_id, args)
+        
+    def _transfer_prev_prompt(self, task_id, args):
+        """
+        # Transfer previous learned prompt param to the new prompt
+        Has previously been done in engine.py
+        """
+        if not (args.prompt_pool and args.shared_prompt_pool): return
+        if not (task_id > 0): return
+
+        prev_start = (task_id - 1) * args.top_k
+        prev_end = task_id * args.top_k
+
+        cur_start = prev_end
+        cur_end = (task_id + 1) * args.top_k
+
+        if (prev_end > args.size) or (cur_end > args.size): return
+
+        cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
+        prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
+
+        with torch.no_grad():
+            self.prompt.grad.zero_()
+            self.prompt[cur_idx] = self.prompt[prev_idx]
+
+    def _transfer_prev_key(self, task_id, args):
+        """
+        # Transfer previous learned prompt param keys to the new prompt
+        Has previously been done in engine.py
+        """
+        if not (args.prompt_pool and args.shared_prompt_key): return
+        if not (task_id > 0): return
+
+        prev_start = (task_id - 1) * args.top_k
+        prev_end = task_id * args.top_k
+
+        cur_start = prev_end
+        cur_end = (task_id + 1) * args.top_k
+
+        if (prev_end > args.size) or (cur_end > args.size): return
+
+        cur_idx = (slice(None), slice(None), slice(cur_start, cur_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(cur_start, cur_end))
+        prev_idx = (slice(None), slice(None), slice(prev_start, prev_end)) if args.use_prefix_tune_for_e_prompt else (slice(None), slice(prev_start, prev_end))
+
+        self.prompt.grad.zero_()
+        self.prompt[cur_idx] = self.prompt[prev_idx]
+
