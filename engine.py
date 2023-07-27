@@ -221,7 +221,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
 
     for task_id in range(args.num_tasks):
         # Transfer previous learned prompt params to the new prompt
-        if (not args.use_mvn) and  args.prompt_pool and args.shared_prompt_pool:
+        if args.prompt_pool and args.shared_prompt_pool:
             if task_id > 0:
                 prev_start = (task_id - 1) * args.top_k
                 prev_end = task_id * args.top_k
