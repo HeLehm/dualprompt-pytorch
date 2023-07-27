@@ -179,6 +179,8 @@ class EPrompt(nn.Module):
         
         out['batched_prompt'] = batched_prompt
 
+        return out
+
     
     def before_task(self, *args, **kwargs):
         pass
