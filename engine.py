@@ -134,6 +134,19 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
 
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))
 
+
+            # task acc (e prompt choose the right task)
+            if args.use_e_prompt:
+                # tensor of shape (batch_size, num_tasks)
+                task_sim = output['similarity']
+                predicted_task = torch.argmax(task_sim, dim=1)
+
+                target_e_task = torch.ones(len(task_sim)) * task_id
+                target_e_task = target_e_task.to(device)
+
+                e_task_acc = torch.sum(torch.eq(predicted_task, target_e_task)).item() / len(task_sim)
+                metric_logger.meters['Acc@1_e_task'].update(e_task_acc, n=input.shape[0])
+
             metric_logger.meters['Loss'].update(loss.item())
             metric_logger.meters['Acc@1'].update(acc1.item(), n=input.shape[0])
             metric_logger.meters['Acc@5'].update(acc5.item(), n=input.shape[0])
