@@ -111,3 +111,6 @@ def get_args_parser(subparsers):
 
     # Misc parameters
     subparsers.add_argument('--print_freq', type=int, default=10, help = 'The frequency of printing')
+
+    # MVN parameters
+    subparsers.add_argument('--use_mvn', default=False, type=bool, help='if using multivariate normal to query the prompt')
