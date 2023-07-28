@@ -14,7 +14,7 @@ def train():
     print(args)
     
     result = subprocess.run([*args, ], capture_output=True, text=True)
-    result = float(result.stdout)
+    #result = float(result.stdout)
 
 
 def main():
