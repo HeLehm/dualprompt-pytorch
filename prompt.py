@@ -203,7 +203,7 @@ class MVNEPrompt(nn.Module):
     """
     def __init__(self, length=5, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                  prompt_key=False, pool_size=None, top_k=None, batchwise_prompt=False, prompt_key_init='uniform',
-                 num_layers=1, use_prefix_tune_for_e_prompt=False, num_heads=-1, same_key_value=False,):
+                 num_layers=1, use_prefix_tune_for_e_prompt=False, num_heads=-1, same_key_value=False,mvn_iter=1):
         super().__init__()
 
         self.length = length
@@ -218,6 +218,7 @@ class MVNEPrompt(nn.Module):
         self.use_prefix_tune_for_e_prompt = use_prefix_tune_for_e_prompt
         self.num_heads = num_heads
         self.same_key_value = same_key_value
+        self.mvn_iter = mvn_iter
 
         if self.prompt_pool:
             # user prefix style
@@ -265,15 +266,15 @@ class MVNEPrompt(nn.Module):
 
         # store embeddings
         embeddings = []
+        for i in range(self.mvn_iter):
+            for input, target in tqdm(data_loader, desc=f"[MVN E-Prompt]Embedding data iter {i} of {self.mvn_iter}"):
+                input = input.to(args.device)
+                target = target.to(args.device)
 
-        for input, target in tqdm(data_loader, desc="[MVN E-Prompt]Embedding data"):
-            input = input.to(args.device)
-            target = target.to(args.device)
-
-            with torch.no_grad():
-                # get embeddings
-                output = original_model(input)
-                embeddings.append(output['pre_logits'])
+                with torch.no_grad():
+                    # get embeddings
+                    output = original_model(input)
+                    embeddings.append(output['pre_logits'])
             
         embeddings = torch.cat(embeddings, dim=0) # N, C
         # calculate mean

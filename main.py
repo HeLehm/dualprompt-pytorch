@@ -105,6 +105,7 @@ def main(args):
         use_prefix_tune_for_e_prompt=args.use_prefix_tune_for_e_prompt,
         same_key_value=args.same_key_value,
         use_mvn=args.use_mvn,
+        mvn_iter=args.mvn_iter,
     )
     original_model.to(device)
     model.to(device)  
