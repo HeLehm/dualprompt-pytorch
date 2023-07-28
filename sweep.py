@@ -16,10 +16,6 @@ def train():
     result = subprocess.run([*args, ], capture_output=True, text=True)
     result = float(result.stdout)
 
-    wandb.log({'AA@1': result})
-
-
-
 
 def main():
     sweep_config = {
