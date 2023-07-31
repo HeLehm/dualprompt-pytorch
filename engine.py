@@ -170,7 +170,7 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
 @torch.no_grad()
 def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, data_loader, 
                     device, task_id=-1, class_mask=None, acc_matrix=None, args=None,):
-    stat_matrix = np.zeros((3, args.num_tasks)) # 3 for Acc@1, Acc@5, Loss
+    stat_matrix = np.zeros((4, args.num_tasks)) # 3 for Acc@1, Acc@5, Loss, EAcc@1
 
     for i in range(task_id+1):
         test_stats = evaluate(model=model, original_model=original_model, data_loader=data_loader[i]['val'], 
@@ -179,6 +179,7 @@ def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, d
         stat_matrix[0, i] = test_stats['Acc@1']
         stat_matrix[1, i] = test_stats['Acc@5']
         stat_matrix[2, i] = test_stats['Loss']
+        stat_matrix[3, i] = test_stats['Acc@1_e_task']
 
         acc_matrix[i, task_id] = test_stats['Acc@1']
     
@@ -200,6 +201,7 @@ def evaluate_till_now(model: torch.nn.Module, original_model: torch.nn.Module, d
             f"AA@1" : avg_stat[0],
             f"AA@5" : avg_stat[1],
             f"ALoss" : avg_stat[2],
+            f"E_prompt_AA@1" : avg_stat[3],
             f"Task" : task_id+1,
         }
         if task_id > 0:
