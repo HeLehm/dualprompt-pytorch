@@ -8,7 +8,7 @@ def main():
 
     for seed in seeds:
         for mvn in use_mvn:
-            cmd = f'python main.py --wandb cifar_dualprompt --seed {seed} --epochs 10 --lr 0.02'
+            cmd = f'python main.py --wandb cifar100_dualprompt --seed {seed} --epochs 10 --lr 0.02'
 
             if mvn:
                 cmd += ' --use_e_mvn True'
