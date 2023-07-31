@@ -8,7 +8,7 @@ def train():
 
     #main.py cifar100_dualprompt --model vit_base_patch16_224 --batch-size 12 --data-path ./local_datasets/ --output_dir ./output
 
-    command = f"python main.py --wandb cifar100_dualprompt --model vit_base_patch16_224 --lr {config.lr} --epochs {config.epochs} --silent True --use_mvn True"
+    command = f"python main.py --wandb cifar100_dualprompt --model vit_base_patch16_224 --lr {config.lr} --epochs {config.epochs} --silent True --use_e_mvn True"
     args = command.split()
     print()
     print(args)

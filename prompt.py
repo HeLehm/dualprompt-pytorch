@@ -203,7 +203,7 @@ class MVNEPrompt(nn.Module):
     """
     def __init__(self, length=5, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                  prompt_key=False, pool_size=None, top_k=None, batchwise_prompt=False, prompt_key_init='uniform',
-                 num_layers=1, use_prefix_tune_for_e_prompt=False, num_heads=-1, same_key_value=False,mvn_iter=1):
+                 num_layers=1, use_prefix_tune_for_e_prompt=False, num_heads=-1, same_key_value=False,mvn_e_iter=1):
         super().__init__()
 
         self.length = length
@@ -218,7 +218,7 @@ class MVNEPrompt(nn.Module):
         self.use_prefix_tune_for_e_prompt = use_prefix_tune_for_e_prompt
         self.num_heads = num_heads
         self.same_key_value = same_key_value
-        self.mvn_iter = mvn_iter
+        self.mvn_e_iter = mvn_e_iter
 
         if self.prompt_pool:
             # user prefix style
@@ -266,8 +266,8 @@ class MVNEPrompt(nn.Module):
 
         # store embeddings
         embeddings = []
-        for i in range(self.mvn_iter):
-            for input, target in tqdm(data_loader, desc=f"[MVN E-Prompt]Embedding data iter {i} of {self.mvn_iter}"):
+        for i in range(self.mvn_e_iter):
+            for input, target in tqdm(data_loader, desc=f"[MVN E-Prompt]Embedding data iter {i} of {self.mvn_e_iter}"):
                 input = input.to(args.device)
                 target = target.to(args.device)
 

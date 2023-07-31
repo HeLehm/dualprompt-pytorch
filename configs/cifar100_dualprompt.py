@@ -113,8 +113,8 @@ def get_args_parser(subparsers):
     subparsers.add_argument('--print_freq', type=int, default=10, help = 'The frequency of printing')
 
     # MVN parameters
-    subparsers.add_argument('--use_mvn', default=False, type=bool, help='if using multivariate normal to query the prompt')
-    subparsers.add_argument('--mvn_iter', default=1, type=int, help='the number of iterations for cov and mean calculation')
+    subparsers.add_argument('--use_e_mvn', default=False, type=bool, help='if using multivariate normal to query the prompt')
+    subparsers.add_argument('--mvn_e_iter', default=1, type=int, help='the number of iterations for cov and mean calculation')
 
     # print stuff
     subparsers.add_argument('--silent', default=False, type=bool, help='if printing anything')

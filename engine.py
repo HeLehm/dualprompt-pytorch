@@ -248,7 +248,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                             optimizer.param_groups[0]['params'] = model.parameters()
                     
         # Transfer previous learned prompt param keys to the new prompt
-        if (not args.use_mvn) and args.prompt_pool and args.shared_prompt_key:
+        if (not args.use_e_mvn) and args.prompt_pool and args.shared_prompt_key:
             if task_id > 0:
                 prev_start = (task_id - 1) * args.top_k
                 prev_end = task_id * args.top_k
