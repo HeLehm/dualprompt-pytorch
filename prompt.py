@@ -181,10 +181,6 @@ class EPrompt(nn.Module):
 
         return out
 
-    
-    def before_task(self, *args, **kwargs):
-        pass
-
 
 def calc_cov(x, jitter=1e-4, mean = None):
     """
@@ -267,7 +263,7 @@ class MVNEPrompt(nn.Module):
         # store embeddings
         embeddings = []
         for i in range(self.mvn_e_iter):
-            for input, target in tqdm(data_loader, desc=f"[MVN E-Prompt]Embedding data iter {i} of {self.mvn_e_iter}"):
+            for input, target in tqdm(data_loader, desc=f"[MVN E-Prompt]Embedding data iter {i + 1} of {self.mvn_e_iter}"):
                 input = input.to(args.device)
                 target = target.to(args.device)
 

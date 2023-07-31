@@ -267,7 +267,8 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                         model.e_prompt.prompt_key.grad.zero_()
                         model.e_prompt.prompt_key[cur_idx] = model.e_prompt.prompt_key[prev_idx]
                         optimizer.param_groups[0]['params'] = model.parameters()
-        if hasattr(model, 'e_prompt'):
+
+        if hasattr(model, 'e_prompt') and hasattr(model.e_prompt, 'before_task'):
             model.e_prompt.before_task(
                 task_id=task_id,
                 original_model=original_model,
@@ -295,6 +296,13 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                         for k, v in train_stats.items()  
                     }
                 )
+
+        if hasattr(model, 'after_task_train'):
+            model.after_task_train(
+                task_id=task_id,
+                data_loader=data_loader[task_id]['train'],
+                args=args,
+            )
 
         test_stats = evaluate_till_now(model=model, original_model=original_model, data_loader=data_loader, device=device, 
                                     task_id=task_id, class_mask=class_mask, acc_matrix=acc_matrix, args=args)

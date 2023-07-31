@@ -30,17 +30,21 @@ from functools import partial
 from collections import OrderedDict
 from typing import Optional
 
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from torch.distributions.multivariate_normal import _batch_mahalanobis
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from timm.models.helpers import build_model_with_cfg, resolve_pretrained_cfg, named_apply, adapt_input_conv, checkpoint_seq
 from timm.models.layers import PatchEmbed, Mlp, DropPath, trunc_normal_, lecun_normal_
 from timm.models.registry import register_model
 
-from prompt import EPrompt, MVNEPrompt
+from prompt import EPrompt, MVNEPrompt, calc_cov
+from matrix import BatchSymmetricPositiveDefiniteMatrix
 from attention import PreT_Attention
 
 _logger = logging.getLogger(__name__)
@@ -193,6 +197,45 @@ default_cfgs = {
 }
 
 
+class MVNHead(nn.Module):
+    def __init__(self, in_features, out_features ,*args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.in_features = in_features
+        self.out_features = out_features
+
+        self.cov = BatchSymmetricPositiveDefiniteMatrix(out_features, in_features, requires_grad=False)
+        self.mean = nn.Parameter(torch.zeros(out_features, in_features), requires_grad=False)
+
+    def set_class(self, class_id, mean, cov):
+        mean = mean.to(self.mean.device)
+        cov = cov.to(self.cov.device)
+        self.mean[class_id] = mean
+        self.cov.set_matrix_at(cov, class_id)
+
+    def forward(self, x):
+        """
+        predict using mvn pdf
+        x.shape : bacth, emb_dim
+        """
+
+        # diff shape B, C, emb_dim
+        diff = x.unsqueeze(1) - self.mean.unsqueeze(0)
+
+        # _unbroadcasted_scale_tril shape C, emb_dim, emb_dim
+        _unbroadcasted_scale_tril = torch.linalg.cholesky(self.cov())
+
+        # M shape B, C
+        M = _batch_mahalanobis(_unbroadcasted_scale_tril, diff)
+
+        half_log_det = _unbroadcasted_scale_tril.diagonal(dim1=-2, dim2=-1).log().sum(-1)
+        result =  -0.5 * (x.shape[-1] * math.log(2 * math.pi) + M) - half_log_det
+
+        result = F.softmax(result, dim=-1)
+
+        return result
+
+
+
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
         super().__init__()
@@ -339,7 +382,7 @@ class VisionTransformer(nn.Module):
             top_k=None, batchwise_prompt=False, prompt_key_init='uniform', head_type='token', use_prompt_mask=False,
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
-            use_e_mvn=False, mvn_e_iter=1):
+            use_e_mvn=False, mvn_e_iter=1, use_mvn_head=False, mvn_head_iter=1):
         """
         Args:
             img_size (int, tuple): input image size
@@ -477,6 +520,10 @@ class VisionTransformer(nn.Module):
         self.fc_norm = norm_layer(embed_dim) if use_fc_norm else nn.Identity()
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
+        if use_mvn_head:
+            # use regular head during training and mvn head during inference
+            self.mvn_head = MVNHead(embed_dim, num_classes)
+
         if weight_init != 'skip':
             self.init_weights(weight_init)
 
@@ -582,8 +629,14 @@ class VisionTransformer(nn.Module):
         res['x'] = x
 
         return res
-
-    def forward_head(self, res, pre_logits: bool = False):
+    
+    def forward_head(self, res, pre_logits: bool = False, train=False):
+        if train:
+            return self.forward_regular_head(res, pre_logits=pre_logits)
+        else:
+            return self.forward_mvn_head(res)
+    
+    def get_pre_logits(self, res):
         x = res['x']
         if self.class_token and self.head_type == 'token':
             if self.prompt_pool:
@@ -602,21 +655,76 @@ class VisionTransformer(nn.Module):
             raise ValueError(f'Invalid classifier={self.classifier}')
         
         res['pre_logits'] = x
+        return res
+
+    def forward_regular_head(self, res, pre_logits: bool = False):
+        res = self.get_pre_logits(res)
+        
+        x = res['pre_logits']
 
         x = self.fc_norm(x)
         
         res['logits'] = self.head(x)
         
         return res
+    
+    def forward_mvn_head(self, res):
+
+        res = self.get_pre_logits(res)
+
+        x = res['pre_logits']
+
+        x = self.fc_norm(x)
+
+        res['logits'] = self.mvn_head(x)
+
+        return res
 
     def forward(self, x, task_id=-1, cls_features=None, train=False):
         res = self.forward_features(x, task_id=task_id, cls_features=cls_features, train=train)
-        res = self.forward_head(res)
+        res = self.forward_head(res, train=train)
         return res
-    
-    def before_task_train(self, task_id, dataloader, args):
-        if args.use_e_prompt:
-            self.e_prompt.before_task_train(task_id, dataloader, args)
+
+    def after_task_train(self, task_id , data_loader, args):
+        if not hasattr(self, 'mvn_head'): return
+        print("MVN HEAD before task")
+        embeddings = []
+        targets = []
+        for i in range(self.mvn_e_iter):
+            for input, target in tqdm(data_loader, desc=f"[MVN HEAD]Embedding data iter {i + 1} of {self.mvn_e_iter}"):
+                input = input.to(args.device)
+                #target = target.to(args.device)
+
+                # TODO use target
+
+                with torch.no_grad():
+                    # get embeddings
+                    res = self.forward_features(input, traine=False)
+                    res = self.get_pre_logits(res)
+                    res['pre_logits'] = self.fc_norm(res['pre_logits'])
+
+                #store embeddings and target
+                embeddings.append(res['pre_logits'].detach().cpu())
+                targets.append(target.detach().cpu())
+
+        embeddings = torch.cat(embeddings, dim=0)
+        targets = torch.cat(targets, dim=0)
+
+        unique_targets = torch.unique(targets)
+
+        for target in unique_targets:
+            # get embeddings for target
+            target_embeddings = embeddings[targets == target]
+
+            # calc mean and cov
+            mean = target_embeddings.mean(dim=0)
+            cov = calc_cov(target_embeddings, mean=mean)
+
+            mean = mean.to(args.device)
+            cov = cov.to(args.device)
+
+            # update mvn head
+            self.mvn_head.set_class(target, mean, cov)   
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ''):

@@ -106,6 +106,8 @@ def main(args):
         same_key_value=args.same_key_value,
         use_e_mvn=args.use_e_mvn,
         mvn_e_iter=args.mvn_e_iter,
+        use_mvn_head=args.use_mvn_head,
+        mvn_head_iter=args.mvn_head_iter,
     )
     original_model.to(device)
     model.to(device)  
