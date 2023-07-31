@@ -208,7 +208,7 @@ class MVNHead(nn.Module):
 
     def set_class(self, class_id, mean, cov):
         mean = mean.to(self.mean.device)
-        cov = cov.to(self.cov.device)
+        cov = cov.to(self.mean.device)
         self.mean[class_id] = mean
         self.cov.set_matrix_at(cov, class_id)
 
@@ -424,6 +424,8 @@ class VisionTransformer(nn.Module):
         self.no_embed_class = no_embed_class
         self.grad_checkpointing = False
 
+        self.mvn_head_iter = mvn_head_iter
+
         self.patch_embed = embed_layer(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
@@ -631,7 +633,7 @@ class VisionTransformer(nn.Module):
         return res
     
     def forward_head(self, res, pre_logits: bool = False, train=False):
-        if train:
+        if train or not hasattr(self, 'mvn_head'):
             return self.forward_regular_head(res, pre_logits=pre_logits)
         else:
             return self.forward_mvn_head(res)
@@ -687,25 +689,23 @@ class VisionTransformer(nn.Module):
 
     def after_task_train(self, task_id , data_loader, args):
         if not hasattr(self, 'mvn_head'): return
-        print("MVN HEAD before task")
+        print("MVN HEAD after task")
         embeddings = []
         targets = []
-        for i in range(self.mvn_e_iter):
-            for input, target in tqdm(data_loader, desc=f"[MVN HEAD]Embedding data iter {i + 1} of {self.mvn_e_iter}"):
+        for i in range(self.mvn_head_iter):
+            for input, target in tqdm(data_loader, desc=f"[MVN HEAD]Embedding data iter {i + 1} of {self.mvn_head_iter}"):
                 input = input.to(args.device)
                 #target = target.to(args.device)
 
-                # TODO use target
-
                 with torch.no_grad():
                     # get embeddings
-                    res = self.forward_features(input, traine=False)
+                    res = self.forward_features(input, train=True)
                     res = self.get_pre_logits(res)
                     res['pre_logits'] = self.fc_norm(res['pre_logits'])
 
-                #store embeddings and target
-                embeddings.append(res['pre_logits'].detach().cpu())
-                targets.append(target.detach().cpu())
+                    #store embeddings and target
+                    embeddings.append(res['pre_logits'].detach().cpu())
+                    targets.append(target.detach().cpu())
 
         embeddings = torch.cat(embeddings, dim=0)
         targets = torch.cat(targets, dim=0)
@@ -720,11 +720,12 @@ class VisionTransformer(nn.Module):
             mean = target_embeddings.mean(dim=0)
             cov = calc_cov(target_embeddings, mean=mean)
 
-            mean = mean.to(args.device)
-            cov = cov.to(args.device)
-
             # update mvn head
-            self.mvn_head.set_class(target, mean, cov)   
+            self.mvn_head.set_class(target, mean, cov)
+
+            #cov_copy = self.mvn_head.cov()[target]
+            # this shoudl be the same
+            #print()
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ''):

@@ -296,7 +296,7 @@ def train_and_evaluate(model: torch.nn.Module, model_without_ddp: torch.nn.Modul
                         for k, v in train_stats.items()  
                     }
                 )
-
+        model.eval()
         if hasattr(model, 'after_task_train'):
             model.after_task_train(
                 task_id=task_id,
