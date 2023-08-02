@@ -108,6 +108,7 @@ def main(args):
         mvn_e_iter=args.mvn_e_iter,
         use_mvn_head=args.use_mvn_head,
         mvn_head_iter=args.mvn_head_iter,
+        normalize_pre_logits=args.normalize_pre_logits,
     )
     original_model.to(device)
     model.to(device)  

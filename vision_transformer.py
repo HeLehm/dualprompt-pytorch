@@ -382,7 +382,7 @@ class VisionTransformer(nn.Module):
             top_k=None, batchwise_prompt=False, prompt_key_init='uniform', head_type='token', use_prompt_mask=False,
             use_g_prompt=False, g_prompt_length=None, g_prompt_layer_idx=None, use_prefix_tune_for_g_prompt=False,
             use_e_prompt=False, e_prompt_layer_idx=None, use_prefix_tune_for_e_prompt=False, same_key_value=False,
-            use_e_mvn=False, mvn_e_iter=1, use_mvn_head=False, mvn_head_iter=1):
+            use_e_mvn=False, mvn_e_iter=1, use_mvn_head=False, mvn_head_iter=1,normalize_pre_logits=False):
         """
         Args:
             img_size (int, tuple): input image size
@@ -423,7 +423,8 @@ class VisionTransformer(nn.Module):
         self.num_prefix_tokens = 1 if class_token else 0
         self.no_embed_class = no_embed_class
         self.grad_checkpointing = False
-
+        
+        self.normalize_pre_logits = normalize_pre_logits
         self.mvn_head_iter = mvn_head_iter
 
         self.patch_embed = embed_layer(
@@ -656,6 +657,9 @@ class VisionTransformer(nn.Module):
         else:
             raise ValueError(f'Invalid classifier={self.classifier}')
         
+        if self.normalize_pre_logits:
+            x = F.normalize(x, dim=-1)
+            
         res['pre_logits'] = x
         return res
 
